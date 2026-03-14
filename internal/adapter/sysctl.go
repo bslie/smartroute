@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
+	"strings"
 )
 
 // SysctlState — ключи из allowlist.
@@ -28,24 +29,64 @@ func NewSysctlAdapter(allowlist []string) *SysctlAdapter {
 	return &SysctlAdapter{Allowlist: allowlist}
 }
 
-// Desired возвращает желаемое состояние.
+// Desired возвращает желаемое состояние sysctl согласно allowlist.
+// Минимальный hardcoded набор: ip_forward и conntrack accounting.
 func (a *SysctlAdapter) Desired(cfg interface{}, decisions interface{}) State {
-	return &SysctlState{Keys: make(map[string]string)}
+	keys := map[string]string{
+		"net.ipv4.ip_forward":                  "1",
+		"net.netfilter.nf_conntrack_acct":       "1",
+		"net.netfilter.nf_conntrack_checksum":   "0",
+	}
+	if len(a.Allowlist) > 0 {
+		filtered := make(map[string]string, len(a.Allowlist))
+		for _, k := range a.Allowlist {
+			if v, ok := keys[k]; ok {
+				filtered[k] = v
+			}
+		}
+		return &SysctlState{Keys: filtered}
+	}
+	return &SysctlState{Keys: keys}
 }
 
-// Observe читает sysctl.
+// Observe читает текущие значения ключей из allowlist + hardcoded набора.
 func (a *SysctlAdapter) Observe() (State, error) {
-	_, _ = exec.Command("sysctl", "-n", "net.ipv4.ip_forward").Output()
-	return &SysctlState{Keys: make(map[string]string)}, nil
+	desired, _ := a.Desired(nil, nil).(*SysctlState)
+	keys := make(map[string]string, len(desired.Keys))
+	for k := range desired.Keys {
+		out, err := exec.Command("sysctl", "-n", k).Output()
+		if err == nil {
+			keys[k] = strings.TrimSpace(string(out))
+		}
+	}
+	return &SysctlState{Keys: keys}, nil
 }
 
-// Plan вычисляет дифф.
+// Plan вычисляет дифф: ключи, значения которых отличаются от desired.
 func (a *SysctlAdapter) Plan(desired, observed State) Diff {
-	return &SysctlDiff{Set: make(map[string]string)}
+	d, _ := desired.(*SysctlState)
+	o, _ := observed.(*SysctlState)
+	if d == nil {
+		return &SysctlDiff{Set: make(map[string]string)}
+	}
+	if o == nil {
+		o = &SysctlState{Keys: make(map[string]string)}
+	}
+	set := make(map[string]string)
+	for k, want := range d.Keys {
+		if got, ok := o.Keys[k]; !ok || got != want {
+			set[k] = want
+		}
+	}
+	return &SysctlDiff{Set: set}
 }
 
 // Apply применяет. При BackupPath != "" сохраняет текущие значения в backup перед применением.
 func (a *SysctlAdapter) Apply(diff Diff) error {
+	d, ok := diff.(*SysctlDiff)
+	if !ok || d == nil || len(d.Set) == 0 {
+		return nil
+	}
 	if a.BackupPath != "" && a.backup == nil {
 		observed, _ := a.Observe()
 		if s, ok := observed.(*SysctlState); ok {
@@ -57,7 +98,9 @@ func (a *SysctlAdapter) Apply(diff Diff) error {
 			_ = os.WriteFile(a.BackupPath, data, 0600)
 		}
 	}
-	_ = diff
+	for k, v := range d.Set {
+		_ = exec.Command("sysctl", "-w", k+"="+v).Run()
+	}
 	return nil
 }
 

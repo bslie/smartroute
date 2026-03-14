@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/smartroute/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/domain"
 )
 
 // NFTablesState — состояние таблицы smartroute.
@@ -35,15 +35,19 @@ func NewNFTablesAdapter(table string) *NFTablesAdapter {
 	return &NFTablesAdapter{TableName: table}
 }
 
-// Desired возвращает желаемое состояние.
+// Desired возвращает желаемое состояние; class bits [8:15] берутся из ReconcileInput.ClassByIP.
 func (a *NFTablesAdapter) Desired(cfg interface{}, decisions interface{}) State {
 	c, ok := cfg.(*domain.Config)
 	if !ok || c == nil {
 		return &NFTablesState{Table: a.TableName, Rules: nil}
 	}
-	decMap, ok := decisions.(map[string]*domain.Assignment)
-	if !ok {
+	decMap := AssignmentsFromDecisions(decisions)
+	if decMap == nil {
 		decMap = map[string]*domain.Assignment{}
+	}
+	var classByIP map[string]uint8
+	if ri, ok := decisions.(*ReconcileInput); ok && ri.ClassByIP != nil {
+		classByIP = ri.ClassByIP
 	}
 	tunnelIndex := make(map[string]uint8, len(c.Tunnels))
 	for i, t := range c.Tunnels {
@@ -64,7 +68,11 @@ func (a *NFTablesAdapter) Desired(cfg interface{}, decisions interface{}) State 
 		if idx == 0 {
 			continue
 		}
-		mark := domain.ComposeMark(idx, 0)
+		classIdx := uint8(0)
+		if classByIP != nil {
+			classIdx = classByIP[k]
+		}
+		mark := domain.ComposeMark(idx, classIdx)
 		ip := asg.DestIP.To4()
 		if ip == nil {
 			continue
@@ -122,9 +130,23 @@ func (a *NFTablesAdapter) Apply(diff Diff) error {
 	return cmd.Run()
 }
 
-// Verify проверяет.
+// Verify проверяет, что текущие правила nft совпадают с желаемыми.
 func (a *NFTablesAdapter) Verify(desired State) error {
-	_ = desired
+	d, ok := desired.(*NFTablesState)
+	if !ok || d == nil {
+		return nil
+	}
+	obs, err := a.Observe()
+	if err != nil {
+		return err
+	}
+	o, _ := obs.(*NFTablesState)
+	if o == nil {
+		return nil
+	}
+	if !equalStringSlices(d.Rules, o.Rules) {
+		return fmt.Errorf("nftables table %s: rules differ from desired (%d want, %d have)", a.TableName, len(d.Rules), len(o.Rules))
+	}
 	return nil
 }
 

@@ -3,7 +3,7 @@ package adapter
 import (
 	"testing"
 
-	"github.com/smartroute/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/domain"
 )
 
 func TestBuildNFTMarkRules(t *testing.T) {

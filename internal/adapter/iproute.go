@@ -1,12 +1,13 @@
 package adapter
 
 import (
+	"fmt"
 	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
 
-	"github.com/smartroute/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/domain"
 )
 
 // IPRouteState — маршруты по таблицам.
@@ -46,33 +47,23 @@ func (a *IPRouteAdapter) Desired(cfg interface{}, decisions interface{}) State {
 	return st
 }
 
-// Observe читает маршруты.
+// Observe читает маршруты из управляемых таблиц (200–209).
 func (a *IPRouteAdapter) Observe() (State, error) {
-	out, err := exec.Command("ip", "route", "show", "table", "all").Output()
-	if err != nil {
-		return &IPRouteState{TableRoutes: make(map[int][]string)}, err
-	}
-	lines := strings.Split(string(out), "\n")
 	st := &IPRouteState{TableRoutes: make(map[int][]string)}
-	for _, ln := range lines {
-		ln = strings.TrimSpace(ln)
-		if ln == "" || !strings.Contains(ln, " table ") {
-			continue
-		}
-		parts := strings.SplitN(ln, " table ", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		tableStr := strings.Fields(parts[1])
-		if len(tableStr) == 0 {
-			continue
-		}
-		table, err := strconv.Atoi(tableStr[0])
+	for table := RouteTableBase; table <= RouteTableMax; table++ {
+		out, err := exec.Command("ip", "route", "show", "table", strconv.Itoa(table)).Output()
 		if err != nil {
+			// Таблица не существует или пуста — нормально
 			continue
 		}
-		route := strings.TrimSpace(parts[0])
-		st.TableRoutes[table] = append(st.TableRoutes[table], route)
+		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+		for _, ln := range lines {
+			ln = strings.TrimSpace(ln)
+			if ln == "" {
+				continue
+			}
+			st.TableRoutes[table] = append(st.TableRoutes[table], ln)
+		}
 	}
 	return st, nil
 }
@@ -151,13 +142,44 @@ func (a *IPRouteAdapter) Apply(diff Diff) error {
 	return nil
 }
 
-// Verify проверяет.
+// Verify проверяет, что маршруты в управляемых таблицах совпадают с желаемым состоянием.
 func (a *IPRouteAdapter) Verify(desired State) error {
-	_ = desired
+	d, ok := desired.(*IPRouteState)
+	if !ok || d == nil {
+		return nil
+	}
+	observed, err := a.Observe()
+	if err != nil {
+		return err
+	}
+	o, _ := observed.(*IPRouteState)
+	if o == nil {
+		return nil
+	}
+	for table, wantRoutes := range d.TableRoutes {
+		have := make(map[string]struct{})
+		for _, r := range o.TableRoutes[table] {
+			have[r] = struct{}{}
+		}
+		for _, r := range wantRoutes {
+			if _, ok := have[r]; !ok {
+				return fmt.Errorf("ip route table %d: missing route %s", table, r)
+			}
+		}
+	}
 	return nil
 }
 
-// Cleanup удаляет маршруты из управляемых таблиц.
+// ManagedTableIDs — диапазон управляемых таблиц маршрутизации (docs: base 200, до 10 туннелей).
+const (
+	RouteTableBase = 200
+	RouteTableMax  = 209
+)
+
+// Cleanup удаляет маршруты из управляемых таблиц [200..209].
 func (a *IPRouteAdapter) Cleanup() error {
+	for table := RouteTableBase; table <= RouteTableMax; table++ {
+		_ = exec.Command("ip", "route", "flush", "table", strconv.Itoa(table)).Run()
+	}
 	return nil
 }

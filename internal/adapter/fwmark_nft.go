@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/smartroute/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/domain"
 )
 
 // BuildNFTMarkRules генерирует nftables rules для установки fwmark по tunnel+class.

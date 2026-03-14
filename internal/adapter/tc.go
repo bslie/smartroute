@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/smartroute/smartroute/internal/domain"
-	"github.com/smartroute/smartroute/internal/metrics"
+	"github.com/bslie/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/metrics"
 )
 
 // TCState — текущее состояние tc (qdisc+classes) на интерфейсе.
@@ -79,9 +79,23 @@ func (a *TCAdapter) Desired(cfgI interface{}, decisionsI interface{}) State {
 }
 
 // Observe читает текущий qdisc на управляемых интерфейсах.
+// Если ManagedIfaces пуст — обнаруживает интерфейсы через "wg show interfaces" (для hot-reload туннелей).
 func (a *TCAdapter) Observe() (State, error) {
-	byIface := make(map[string]string)
-	for _, iface := range a.ManagedIfaces {
+	ifaces := a.ManagedIfaces
+	if len(ifaces) == 0 {
+		out, err := exec.Command("wg", "show", "interfaces").Output()
+		if err == nil {
+			list := make([]string, 0, 16)
+			for _, name := range strings.Fields(strings.TrimSpace(string(out))) {
+				if name != "" {
+					list = append(list, name)
+				}
+			}
+			ifaces = list
+		}
+	}
+	byIface := make(map[string]string, len(ifaces))
+	for _, iface := range ifaces {
 		out, err := exec.Command("tc", "qdisc", "show", "dev", iface).Output()
 		if err != nil {
 			byIface[iface] = "none"
@@ -196,9 +210,20 @@ func (a *TCAdapter) Verify(desiredI State) error {
 	return nil
 }
 
-// Cleanup удаляет qdisc на управляемых интерфейсах.
+// Cleanup удаляет qdisc на управляемых интерфейсах (при пустом ManagedIfaces — по "wg show interfaces").
 func (a *TCAdapter) Cleanup() error {
-	for _, iface := range a.ManagedIfaces {
+	ifaces := a.ManagedIfaces
+	if len(ifaces) == 0 {
+		out, err := exec.Command("wg", "show", "interfaces").Output()
+		if err == nil {
+			for _, name := range strings.Fields(strings.TrimSpace(string(out))) {
+				if name != "" {
+					ifaces = append(ifaces, name)
+				}
+			}
+		}
+	}
+	for _, iface := range ifaces {
 		start := time.Now()
 		exec.Command("tc", "qdisc", "del", "dev", iface, "root").Run() //nolint:errcheck
 		metrics.SetTCFlushMs(time.Since(start).Milliseconds())
@@ -272,19 +297,17 @@ func (a *TCAdapter) applyHTB(iface string, _ []TCClass) error {
 		}
 	}
 
-	// Filters: match fwmark bits [8:15] (class index).
-	// fwmark mask: 0x0000ff00 → bits [8:15].
-	// class index 1=game(1:10), 2=web(1:20), 3=bulk(1:30)
+	// Filters: match skb mark (fwmark) bits [8:15] (class index). nftables выставляет mark, tc классифицирует по нему.
+	// match mark — сопоставление по skb->mark, не по полю пакета.
 	filterMap := map[int]string{1: "1:10", 2: "1:20", 3: "1:30"}
 	for classIdx, flowid := range filterMap {
-		// u32 match на fwmark: val=classIdx<<8, mask=0xff00
-		hexVal := fmt.Sprintf("0x%08x", classIdx<<8)
-		hexMask := "0x0000ff00"
+		val := classIdx << 8
+		hexVal := fmt.Sprintf("0x%x", val)
+		hexMask := "0xff00"
 		if err := run("filter", "add", "dev", iface, "parent", "1:", "protocol", "ip",
 			"prio", "1", "handle", fmt.Sprintf("%d:", classIdx), "u32",
-			"match", "u32", hexVal, hexMask, "at", "0",
+			"match", "mark", hexVal, hexMask,
 			"flowid", flowid); err != nil {
-			// Не критично: filter может уже существовать
 			_ = err
 		}
 	}

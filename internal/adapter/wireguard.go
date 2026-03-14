@@ -1,29 +1,34 @@
 package adapter
 
 import (
+	"bytes"
+	"fmt"
+	"os"
 	"os/exec"
 	"sort"
 	"strings"
 
-	"github.com/smartroute/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/domain"
 )
 
-// WireGuardState — состояние интерфейсов wg.
+// WireGuardState — состояние интерфейсов wg (имена + конфиги для setconf).
 type WireGuardState struct {
 	Interfaces []string
+	Configs    []WGInterfaceConfig // один в один с Tunnels из конфига
 }
 
-// WireGuardDiff — add/remove интерфейсов.
+// WireGuardDiff — add/remove интерфейсов и применение конфига.
 type WireGuardDiff struct {
 	Ensure []WGInterfaceConfig
 	Remove []string
 }
 
-// WGInterfaceConfig — конфиг интерфейса.
+// WGInterfaceConfig — конфиг интерфейса для wg setconf.
 type WGInterfaceConfig struct {
-	Name      string
-	Endpoint  string
-	KeyFile   string
+	Name          string
+	Endpoint      string
+	PrivateKeyFile string
+	PeerPublicKey  string
 }
 
 // WireGuardAdapter — управление wg интерфейсами.
@@ -34,18 +39,26 @@ func NewWireGuardAdapter() *WireGuardAdapter {
 	return &WireGuardAdapter{}
 }
 
-// Desired возвращает желаемое состояние.
-func (a *WireGuardAdapter) Desired(cfg interface{}, decisions interface{}) State {
+// Desired возвращает желаемое состояние (имена + конфиги для setconf).
+func (a *WireGuardAdapter) Desired(cfg interface{}, _ interface{}) State {
 	c, ok := cfg.(*domain.Config)
 	if !ok || c == nil {
-		return &WireGuardState{Interfaces: nil}
+		return &WireGuardState{Interfaces: nil, Configs: nil}
 	}
 	ifaces := make([]string, 0, len(c.Tunnels))
+	configs := make([]WGInterfaceConfig, 0, len(c.Tunnels))
 	for _, t := range c.Tunnels {
-		ifaces = append(ifaces, "wg-"+t.Name)
+		name := "wg-" + t.Name
+		ifaces = append(ifaces, name)
+		configs = append(configs, WGInterfaceConfig{
+			Name:            name,
+			Endpoint:        t.Endpoint,
+			PrivateKeyFile:  t.PrivateKeyFile,
+			PeerPublicKey:   t.PeerPublicKey,
+		})
 	}
 	sort.Strings(ifaces)
-	return &WireGuardState{Interfaces: ifaces}
+	return &WireGuardState{Interfaces: ifaces, Configs: configs}
 }
 
 // Observe читает wg show.
@@ -59,7 +72,7 @@ func (a *WireGuardAdapter) Observe() (State, error) {
 	return &WireGuardState{Interfaces: fields}, nil
 }
 
-// Plan вычисляет дифф.
+// Plan вычисляет дифф: Ensure — все желаемые интерфейсы с конфигом (создать или обновить setconf), Remove — лишние.
 func (a *WireGuardAdapter) Plan(desired, observed State) Diff {
 	d, _ := desired.(*WireGuardState)
 	o, _ := observed.(*WireGuardState)
@@ -69,22 +82,22 @@ func (a *WireGuardAdapter) Plan(desired, observed State) Diff {
 	if o == nil {
 		o = &WireGuardState{}
 	}
-	want := make(map[string]struct{}, len(d.Interfaces))
 	have := make(map[string]struct{}, len(o.Interfaces))
-	for _, n := range d.Interfaces {
-		want[n] = struct{}{}
-	}
 	for _, n := range o.Interfaces {
 		have[n] = struct{}{}
 	}
-	diff := &WireGuardDiff{Ensure: make([]WGInterfaceConfig, 0), Remove: make([]string, 0)}
+	configByName := make(map[string]WGInterfaceConfig, len(d.Configs))
+	for _, c := range d.Configs {
+		configByName[c.Name] = c
+	}
+	diff := &WireGuardDiff{Ensure: make([]WGInterfaceConfig, 0, len(d.Interfaces)), Remove: make([]string, 0)}
 	for _, n := range d.Interfaces {
-		if _, ok := have[n]; !ok {
-			diff.Ensure = append(diff.Ensure, WGInterfaceConfig{Name: n})
+		if cfg, ok := configByName[n]; ok {
+			diff.Ensure = append(diff.Ensure, cfg)
 		}
 	}
 	for _, n := range o.Interfaces {
-		if _, ok := want[n]; !ok && strings.HasPrefix(n, "wg-") {
+		if _, want := configByName[n]; !want && strings.HasPrefix(n, "wg-") {
 			diff.Remove = append(diff.Remove, n)
 		}
 	}
@@ -93,7 +106,7 @@ func (a *WireGuardAdapter) Plan(desired, observed State) Diff {
 	return diff
 }
 
-// Apply применяет (wg set и т.д.).
+// Apply удаляет лишние интерфейсы, создаёт/поднимает нужные и применяет wg setconf (ключ, peer).
 func (a *WireGuardAdapter) Apply(diff Diff) error {
 	d, ok := diff.(*WireGuardDiff)
 	if !ok || d == nil {
@@ -105,14 +118,73 @@ func (a *WireGuardAdapter) Apply(diff Diff) error {
 	for _, cfg := range d.Ensure {
 		_ = exec.Command("ip", "link", "add", "dev", cfg.Name, "type", "wireguard").Run()
 		_ = exec.Command("ip", "link", "set", "up", "dev", cfg.Name).Run()
+		body, err := buildWGSetconfContent(cfg)
+		if err != nil {
+			return fmt.Errorf("wg setconf %s: %w", cfg.Name, err)
+		}
+		if len(body) == 0 {
+			continue
+		}
+		cmd := exec.Command("wg", "setconf", cfg.Name, "-")
+		cmd.Stdin = bytes.NewReader(body)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("wg setconf %s: %w: %s", cfg.Name, err, out)
+		}
 	}
 	return nil
 }
 
-// Verify проверяет.
+// Verify проверяет, что все желаемые интерфейсы присутствуют (wg show interfaces).
 func (a *WireGuardAdapter) Verify(desired State) error {
-	_ = desired
+	d, ok := desired.(*WireGuardState)
+	if !ok || d == nil || len(d.Interfaces) == 0 {
+		return nil
+	}
+	obs, err := a.Observe()
+	if err != nil {
+		return err
+	}
+	o, _ := obs.(*WireGuardState)
+	if o == nil {
+		return nil
+	}
+	have := make(map[string]struct{}, len(o.Interfaces))
+	for _, n := range o.Interfaces {
+		have[n] = struct{}{}
+	}
+	for _, name := range d.Interfaces {
+		if _, ok := have[name]; !ok {
+			return fmt.Errorf("wireguard interface missing: %s", name)
+		}
+	}
 	return nil
+}
+
+// buildWGSetconfContent формирует конфиг для wg setconf: [Interface] PrivateKey и при наличии — [Peer].
+func buildWGSetconfContent(cfg WGInterfaceConfig) ([]byte, error) {
+	var b bytes.Buffer
+	if cfg.PrivateKeyFile != "" {
+		key, err := os.ReadFile(cfg.PrivateKeyFile)
+		if err != nil {
+			return nil, err
+		}
+		key = bytes.TrimSpace(key)
+		b.WriteString("[Interface]\nPrivateKey = ")
+		b.Write(key)
+		b.WriteByte('\n')
+	}
+	if cfg.PeerPublicKey != "" {
+		b.WriteString("\n[Peer]\nPublicKey = ")
+		b.WriteString(strings.TrimSpace(cfg.PeerPublicKey))
+		b.WriteByte('\n')
+		if cfg.Endpoint != "" {
+			b.WriteString("Endpoint = ")
+			b.WriteString(strings.TrimSpace(cfg.Endpoint))
+			b.WriteByte('\n')
+		}
+		b.WriteString("AllowedIPs = 0.0.0.0/0, ::/0\n")
+	}
+	return b.Bytes(), nil
 }
 
 // Cleanup удаляет wg интерфейсы.

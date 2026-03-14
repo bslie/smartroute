@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/smartroute/smartroute/internal/domain"
-	"github.com/smartroute/smartroute/internal/metrics"
+	"github.com/bslie/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/metrics"
 )
 
 // IPRuleState — желаемое/наблюдаемое состояние ip rules (упрощённо: список правил).
@@ -48,8 +48,8 @@ func (a *IPRuleAdapter) Desired(cfg interface{}, decisions interface{}) State {
 	if !ok || c == nil {
 		return &IPRuleState{Rules: nil}
 	}
-	decMap, ok := decisions.(map[string]*domain.Assignment)
-	if !ok {
+	decMap := AssignmentsFromDecisions(decisions)
+	if decMap == nil {
 		return &IPRuleState{Rules: nil}
 	}
 	tunnelByName := make(map[string]domain.TunnelConfig, len(c.Tunnels))
@@ -170,9 +170,11 @@ func (a *IPRuleAdapter) Apply(diff Diff) error {
 		return nil
 	}
 	for _, r := range d.Remove {
-		if err := exec.Command("ip", "rule", "del", "priority", strconv.Itoa(r.Priority)).Run(); err == nil {
-			metrics.IncRuleSyncDel()
+		if err := exec.Command("ip", "rule", "del", "priority", strconv.Itoa(r.Priority)).Run(); err != nil {
+			// Правило уже удалено внешней стороной — не критично, счётчик не инкрементируем
+			continue
 		}
+		metrics.IncRuleSyncDel()
 	}
 	for _, r := range d.Add {
 		args := []string{
@@ -185,7 +187,8 @@ func (a *IPRuleAdapter) Apply(diff Diff) error {
 		if err := exec.Command("ip", args...).Run(); err != nil {
 			return fmt.Errorf("ip rule add prio=%d to=%s fwmark=0x%x table=%d: %w", r.Priority, r.DestCIDR, r.FwMark, r.TableID, err)
 		}
-		metrics.IncRuleSyncAdd()	}
+		metrics.IncRuleSyncAdd()
+	}
 	return nil
 }
 
