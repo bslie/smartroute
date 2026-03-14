@@ -1,7 +1,7 @@
 # SmartRoute — сборка и тесты (целевая ОС: Linux)
 #
-# Сборка в WSL: cd /mnt/w/projects/smartroute && make build
-# Кросс-сборка с Windows (через WSL): wsl make -C /mnt/w/projects/smartroute build-linux
+# Сборка в WSL (Ubuntu): cd /mnt/w/projects/smartroute && make build
+# Или одной командой с Windows: wsl -d Ubuntu-24.04 make -C /mnt/w/projects/smartroute build
 
 VERSION ?= 0.1.0
 BINARY  := smartroute
