@@ -1,0 +1,37 @@
+# Конфигурация SmartRoute
+
+## Что нужно создать локально (в репозиторий не коммитится)
+
+### 1. config.yaml
+
+Скопируйте пример и отредактируйте под свои туннели и маршруты:
+
+  cp configs/smartroute.example.yaml config.yaml
+
+или для установки в систему:
+
+  cp configs/smartroute.example.yaml /etc/smartroute/config.yaml
+
+Файл `config.yaml` в .gitignore — в Git не попадёт.
+
+### 2. Ключи WireGuard (*.key)
+
+Создайте файлы ключей в `configs/keys/` (или в /etc/smartroute/keys/).  
+Имена и пути укажите в config.yaml в `tunnels[].private_key_file`.
+
+См. также: configs/keys/README
+
+Файлы `*.key` в .gitignore — в Git не попадут.
+
+### 3. Каталоги для демона (по желанию)
+
+Для state-file и game_mode демон может использовать:
+
+  /var/run/smartroute/
+
+Создайте при необходимости:
+
+  sudo mkdir -p /var/run/smartroute
+  sudo chown $USER:$USER /var/run/smartroute
+
+Каталог `/var/` в .gitignore — в Git не попадёт.
