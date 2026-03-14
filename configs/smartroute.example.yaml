@@ -52,6 +52,7 @@ qos:
 
 shutdown_cleanup: full   # full | preserve | rules-only
 dest_ttl: 120s
+# dnsmasq_log_path: /var/log/dnsmasq.log   # опционально: лог dnsmasq (log-queries) для подпитки DNS-кэша
 tunnel_quarantine_cooldown_sec: 60
 sticky_cycles: 5
 hysteresis_web_pct: 15

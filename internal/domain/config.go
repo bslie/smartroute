@@ -10,6 +10,7 @@ type TunnelConfig struct {
 	Name           string `yaml:"name"`
 	Endpoint       string `yaml:"endpoint"`
 	PrivateKeyFile string `yaml:"private_key_file"`
+	PeerPublicKey  string `yaml:"peer_public_key,omitempty"` // для wg setconf: один peer (endpoint + allowedips)
 	RouteTable     int    `yaml:"route_table,omitempty"`
 	FWMark         uint32 `yaml:"fwmark,omitempty"`
 	IsDefault      bool   `yaml:"is_default,omitempty"`
@@ -71,6 +72,7 @@ type Config struct {
 	QoS                 QoSConfig     `yaml:"qos,omitempty"`
 	ShutdownCleanup     string        `yaml:"shutdown_cleanup,omitempty"` // full | preserve | rules-only
 	DestTTL             time.Duration `yaml:"dest_ttl,omitempty"`
+	DnsmasqLogPath      string        `yaml:"dnsmasq_log_path,omitempty"` // путь к логу dnsmasq (log-queries) для подпитки DNS-кэша
 	TunnelQuarantineCooldownSec int   `yaml:"tunnel_quarantine_cooldown_sec,omitempty"`
 	StickyCycles        int           `yaml:"sticky_cycles,omitempty"`
 	HysteresisWebPct    int           `yaml:"hysteresis_web_pct,omitempty"`
