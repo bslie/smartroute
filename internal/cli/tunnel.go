@@ -211,10 +211,12 @@ fi
 
 SERVER_PRIVKEY=$(cat "/etc/wireguard/${WG_NAME}_private.key")
 
-# Конфиг через printf — heredoc не использовался, чтобы избежать раскрытия переменных при генерации
-printf '[Interface]\nPrivateKey = %s\nAddress = 10.0.0.1/24\nListenPort = %s\n\n[Peer]\nPublicKey = %s\nAllowedIPs = %s\n' \
+# wg setconf не поддерживает Address — только PrivateKey, ListenPort; адрес задаём через ip ниже
+umask 077
+printf '[Interface]\nPrivateKey = %s\nListenPort = %s\n\n[Peer]\nPublicKey = %s\nAllowedIPs = %s\n' \
   "$SERVER_PRIVKEY" "$LISTEN_PORT" "$CLIENT_PUBKEY" "$CLIENT_SUBNET" \
   > "/etc/wireguard/${WG_NAME}.conf"
+chmod 600 "/etc/wireguard/${WG_NAME}.conf"
 
 ip link add "$WG_NAME" type wireguard 2>/dev/null || true
 wg setconf "$WG_NAME" "/etc/wireguard/${WG_NAME}.conf"
