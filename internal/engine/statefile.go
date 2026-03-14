@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/smartroute/smartroute/internal/metrics"
-	"github.com/smartroute/smartroute/internal/store"
+	"github.com/bslie/smartroute/internal/metrics"
+	"github.com/bslie/smartroute/internal/store"
 )
 
 // StateSnapshot — снимок для записи в файл (CLI читает без демона).

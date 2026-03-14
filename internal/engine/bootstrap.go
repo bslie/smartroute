@@ -1,8 +1,8 @@
 package engine
 
 import (
-	"github.com/smartroute/smartroute/internal/domain"
-	"github.com/smartroute/smartroute/internal/store"
+	"github.com/bslie/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/store"
 )
 
 // Bootstrap выполняет последовательность запуска по плану (шаги 1–9).
@@ -16,8 +16,9 @@ func Bootstrap(
 		return err
 	}
 	// 2. Init empty store — store уже создан
-	// 3. Check OS capabilities
+	// 3. Check OS capabilities (в т.ч. DNSLog при dnsmasq_log_path)
 	RefreshCapabilities()
+	RefreshCapabilitiesFromConfig(cfg)
 	// 4. Disable unavailable features — пропускаем
 	// 5. Init adapters — передаются снаружи в Reconciler
 	// 6. Observe initial — делается в первом reconcile

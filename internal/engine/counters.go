@@ -1,6 +1,6 @@
 package engine
 
-import "github.com/smartroute/smartroute/internal/metrics"
+import "github.com/bslie/smartroute/internal/metrics"
 
 // Алиасы счётчиков engine для удобства (делегируют в metrics пакет).
 

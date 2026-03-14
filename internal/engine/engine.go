@@ -9,14 +9,14 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/smartroute/smartroute/internal/decision"
-	"github.com/smartroute/smartroute/internal/domain"
-	"github.com/smartroute/smartroute/internal/eventbus"
-	"github.com/smartroute/smartroute/internal/memlog"
-	"github.com/smartroute/smartroute/internal/metrics"
-	"github.com/smartroute/smartroute/internal/observer"
-	"github.com/smartroute/smartroute/internal/probe"
-	"github.com/smartroute/smartroute/internal/store"
+	"github.com/bslie/smartroute/internal/decision"
+	"github.com/bslie/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/eventbus"
+	"github.com/bslie/smartroute/internal/memlog"
+	"github.com/bslie/smartroute/internal/metrics"
+	"github.com/bslie/smartroute/internal/observer"
+	"github.com/bslie/smartroute/internal/probe"
+	"github.com/bslie/smartroute/internal/store"
 )
 
 // tunnelQuarantineState хранит данные о карантине туннеля.
@@ -86,9 +86,10 @@ func New(
 // Run запускает tick loop в горутине. Контекст для остановки.
 func (e *Engine) Run(ctx context.Context) {
 	ctx, e.cancel = context.WithCancel(ctx)
-	ticker := time.NewTicker(e.TickInterval)
-	defer ticker.Stop()
 	e.MemLog.Write("info", "engine: tick loop started")
+	currentInterval := e.TickInterval
+	ticker := time.NewTicker(currentInterval)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
@@ -96,6 +97,11 @@ func (e *Engine) Run(ctx context.Context) {
 			return
 		case <-ticker.C:
 			e.tick(ctx)
+			// Перезапускаем тикер если интервал изменился (hot-reload)
+			if e.TickInterval > 0 && e.TickInterval != currentInterval {
+				ticker.Reset(e.TickInterval)
+				currentInterval = e.TickInterval
+			}
 		}
 	}
 }
@@ -109,24 +115,46 @@ func (e *Engine) tick(ctx context.Context) {
 		return
 	}
 	e.Store.Lock()
-	defer e.Store.Unlock()
 	e.Store.Generation++
 	if e.ConfigGeneration != nil {
 		e.Store.ConfigGeneration = atomic.LoadUint64(e.ConfigGeneration)
 	}
-	// Упрощённо: обновляем только туннели из конфига и готовность (при первом тике или пустом store).
-	if len(e.Store.Tunnels.Names()) == 0 && len(cfg.Tunnels) > 0 {
-		for _, tc := range cfg.Tunnels {
+	// Синхронизация туннелей с конфигом (hot-reload: добавление/удаление туннелей).
+	configNames := make(map[string]struct{}, len(cfg.Tunnels))
+	for i, tc := range cfg.Tunnels {
+		configNames[tc.Name] = struct{}{}
+		tunnelIndex := uint32(i + 1)
+		fw := tc.FWMark
+		if fw == 0 {
+			fw = tunnelIndex
+		}
+		rt := tc.RouteTable
+		if rt == 0 {
+			rt = 200 + int(tunnelIndex)
+		}
+		if e.Store.Tunnels.Get(tc.Name) == nil {
 			t := &domain.Tunnel{
 				Name: tc.Name, Endpoint: tc.Endpoint, Interface: "wg-" + tc.Name,
-				RouteTable: 200, FWMark: 1, IsDefault: tc.IsDefault,
+				RouteTable: rt, FWMark: fw, IsDefault: tc.IsDefault,
 				State: domain.TunnelStateDeclared,
 				Health: domain.TunnelHealth{Score: 1.0, Liveness: domain.LivenessUp},
 			}
-			if tc.RouteTable != 0 {
-				t.RouteTable = tc.RouteTable
-			}
 			e.Store.Tunnels.Set(t)
+		}
+	}
+	for _, name := range e.Store.Tunnels.Names() {
+		if _, inCfg := configNames[name]; !inCfg {
+			e.Store.Tunnels.Delete(name)
+			delete(e.quarantineState, name)
+			delete(e.degradedSince, name)
+			delete(e.prevScores, name)
+			delete(e.lastPassive, "wg-"+name)
+			// Очистка lastProbe: ключ "ip|tunnel"
+			for k := range e.lastProbe {
+				if strings.HasSuffix(k, "|"+name) {
+					delete(e.lastProbe, k)
+				}
+			}
 		}
 	}
 	if !e.Store.Ready {
@@ -145,12 +173,15 @@ func (e *Engine) tick(ctx context.Context) {
 	e.runTunnelStateMachine(cfg)
 	// Observe → classify → decide: conntrack → destinations → classifier → decider → assignments
 	e.runObserveDecideLoop(cfg)
-	// Отправка desired state в reconciler (debounced)
-	e.Reconciler.TriggerReconcile(cfg, e.Store)
 	e.Store.AppliedGen = e.Store.Generation
 	e.Store.AppliedConfigGen = e.Store.ConfigGeneration
 	snap := BuildStateSnapshot(e.Store)
+	// Снимаем Lock ДО вызова TriggerReconcile: reconcile выполняет exec.Command и может
+	// занять сотни мс — нельзя держать Store.Lock() всё это время (CLI не сможет читать).
+	e.Store.Unlock()
+	e.Reconciler.TriggerReconcile(cfg, e.Store)
 	WriteStateFileSafe(&snap, e.StateFile)
+	// Убираем defer Store.Unlock() — мы уже разблокировали вручную.
 }
 
 // Stop останавливает tick loop.
@@ -168,6 +199,13 @@ func (e *Engine) Stop() {
 
 // runObserveDecideLoop: conntrack → destinations → classify → decide → store (assignments).
 func (e *Engine) runObserveDecideLoop(cfg *domain.Config) {
+	// Подпитка DNS-кэша из лога dnsmasq (confidence 0.8 по доке)
+	if cfg.DnsmasqLogPath != "" && e.dnsCache != nil {
+		records, _ := observer.ReadDnsmasqLog(cfg.DnsmasqLogPath, 64*1024)
+		for _, rec := range records {
+			e.dnsCache.Set(rec.IP, rec.Domain, 0.8)
+		}
+	}
 	entries, err := observer.ReadConntrack(e.ConntrackPath)
 	if err != nil {
 		return
@@ -268,9 +306,15 @@ func (e *Engine) runObserveDecideLoop(cfg *domain.Config) {
 			e.submitProbeJob(dest, assignment.TunnelName, cfg)
 		}
 	}
-	// GC destinations: stale (>60s) и expired (>300s)
+	// GC destinations: stale и expired по cfg.DestTTL (docs: dest_ttl 120s default)
 	staleTTL := 60 * time.Second
-	expiredTTL := 300 * time.Second
+	expiredTTL := cfg.DestTTL
+	if expiredTTL <= 0 {
+		expiredTTL = 120 * time.Second
+	}
+	if staleTTL > expiredTTL {
+		staleTTL = expiredTTL / 2
+	}
 	for _, dest := range e.Store.Destinations.All() {
 		if _, seen := seenIP[dest.IP.String()]; seen {
 			continue

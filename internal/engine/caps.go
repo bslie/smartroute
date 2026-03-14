@@ -1,8 +1,11 @@
 package engine
 
 import (
+	"os"
 	"os/exec"
 	"sync"
+
+	"github.com/bslie/smartroute/internal/domain"
 )
 
 // Capabilities — доступность фич ОС (только чтение после Detect).
@@ -44,6 +47,20 @@ func (c *Capabilities) Get() (conntrack, nft, tc, wg, dnslog bool) {
 // RefreshCapabilities заново определяет возможности ОС (вызов в bootstrap).
 func RefreshCapabilities() {
 	DetectCapabilities(&defaultCaps)
+}
+
+// RefreshCapabilitiesFromConfig обновляет capabilities с учётом конфига (например DNSLog при dnsmasq_log_path).
+func RefreshCapabilitiesFromConfig(cfg *domain.Config) {
+	if cfg == nil {
+		return
+	}
+	defaultCaps.mu.Lock()
+	defer defaultCaps.mu.Unlock()
+	if cfg.DnsmasqLogPath != "" {
+		if _, err := os.Stat(cfg.DnsmasqLogPath); err == nil {
+			defaultCaps.DNSLog = true
+		}
+	}
 }
 
 // DisabledFeatures возвращает список отключённых фич для status.

@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/smartroute/smartroute/internal/domain"
-	"github.com/smartroute/smartroute/internal/store"
+	"github.com/bslie/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/store"
 )
 
 func TestWriteReadStateFile(t *testing.T) {

@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/smartroute/smartroute/internal/domain"
-	"github.com/smartroute/smartroute/internal/eventbus"
+	"github.com/bslie/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/eventbus"
 )
 
 // Shutdown выполняет остановку: cancel tick, wait reconcile, cleanup по режиму.
