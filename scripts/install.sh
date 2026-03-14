@@ -12,7 +12,21 @@ VERSION="${SMARTROUTE_VERSION:-master}"
 # Если задан SOURCE_DIR — собираем из этой папки (без git clone)
 SOURCE_DIR="${SMARTROUTE_SOURCE_DIR:-}"
 
-echo "[SmartRoute] Install"
+# Проверка: уже установлена предыдущая версия?
+INSTALLED_BIN=""
+if [ -x "$INSTALL_DIR/bin/smartroute" ]; then
+  INSTALLED_BIN="$INSTALL_DIR/bin/smartroute"
+elif command -v smartroute >/dev/null 2>&1; then
+  INSTALLED_BIN="$(command -v smartroute)"
+fi
+IS_UPGRADE=""
+if [ -n "$INSTALLED_BIN" ]; then
+  IS_UPGRADE=1
+  echo "[SmartRoute] Обновление существующей установки"
+  [ -x "$INSTALLED_BIN" ] && "$INSTALLED_BIN" --version 2>/dev/null || true
+else
+  echo "[SmartRoute] Установка"
+fi
 echo "  INSTALL_DIR: $INSTALL_DIR"
 
 # Определение менеджера пакетов
@@ -204,7 +218,11 @@ do_install() {
         echo "    Бинарник: $BUILD_DIR/smartroute"
         return
     fi
-    echo "[*] Установка в $INSTALL_DIR/bin..."
+    if [ -n "$IS_UPGRADE" ]; then
+        echo "[*] Обновление бинарника и файлов в $INSTALL_DIR..."
+    else
+        echo "[*] Установка в $INSTALL_DIR/bin..."
+    fi
     mkdir -p "$INSTALL_DIR/bin" 2>/dev/null || sudo mkdir -p "$INSTALL_DIR/bin"
     install -m 755 "$BUILD_DIR/smartroute" "$INSTALL_DIR/bin/smartroute" 2>/dev/null || sudo install -m 755 "$BUILD_DIR/smartroute" "$INSTALL_DIR/bin/smartroute"
     echo "[OK] Установлено: $INSTALL_DIR/bin/smartroute"
@@ -240,5 +258,10 @@ do_install
 verify
 
 echo ""
-echo "Готово. Запуск: smartroute run -c /etc/smartroute/config.yaml"
+if [ -n "$IS_UPGRADE" ]; then
+    echo "Обновление завершено. Перезапустите демон SmartRoute для применения изменений (если запущен):"
+    echo "  kill \$(pgrep -f 'smartroute run')   # или: systemctl restart smartroute"
+    echo ""
+fi
+echo "Запуск: smartroute run -c /etc/smartroute/config.yaml"
 echo "Или: $INSTALL_DIR/bin/smartroute run -c /path/to/config.yaml"
