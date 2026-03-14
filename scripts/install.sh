@@ -7,7 +7,8 @@ set -e
 REPO_URL="${SMARTROUTE_REPO:-https://github.com/smartroute/smartroute.git}"
 INSTALL_DIR="${SMARTROUTE_INSTALL_DIR:-/usr/local}"
 BUILD_DIR="${SMARTROUTE_BUILD_DIR:-/tmp/smartroute-build}"
-VERSION="${SMARTROUTE_VERSION:-main}"
+# Ветка по умолчанию должна совпадать с HEAD в репозитории (master/main)
+VERSION="${SMARTROUTE_VERSION:-master}"
 # Если задан SOURCE_DIR — собираем из этой папки (без git clone)
 SOURCE_DIR="${SMARTROUTE_SOURCE_DIR:-}"
 

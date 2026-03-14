@@ -28,3 +28,12 @@ config.yaml
 
 # Build
 /dist/
+.go/
+.gopath/
+
+# Локальные данные и логи (не коммитить)
+*.log
+.env
+.env.*
+*.bak
+*.tmp
