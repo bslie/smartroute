@@ -213,6 +213,11 @@ do_install() {
         install -m 644 "$BUILD_DIR/configs/smartroute.example.yaml" "$INSTALL_DIR/share/smartroute/config.example.yaml" 2>/dev/null || sudo install -m 644 "$BUILD_DIR/configs/smartroute.example.yaml" "$INSTALL_DIR/share/smartroute/config.example.yaml" 2>/dev/null || true
         echo "[OK] Пример конфига: $INSTALL_DIR/share/smartroute/config.example.yaml"
     fi
+    if [ -f "$BUILD_DIR/scripts/install-wireguard.sh" ]; then
+        mkdir -p "$INSTALL_DIR/share/smartroute" 2>/dev/null || sudo mkdir -p "$INSTALL_DIR/share/smartroute"
+        install -m 755 "$BUILD_DIR/scripts/install-wireguard.sh" "$INSTALL_DIR/share/smartroute/install-wireguard.sh" 2>/dev/null || sudo install -m 755 "$BUILD_DIR/scripts/install-wireguard.sh" "$INSTALL_DIR/share/smartroute/install-wireguard.sh" 2>/dev/null || true
+        echo "[OK] Скрипт установки WG: $INSTALL_DIR/share/smartroute/install-wireguard.sh"
+    fi
 }
 
 # 7. Проверка после установки

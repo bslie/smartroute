@@ -41,6 +41,7 @@ echo "  INSTALL_DIR: $INSTALL_DIR"
 
 run_rm "$INSTALL_DIR/bin/smartroute"
 run_rm "$INSTALL_DIR/share/smartroute/config.example.yaml"
+run_rm "$INSTALL_DIR/share/smartroute/install-wireguard.sh"
 run_rmdir "$INSTALL_DIR/share/smartroute"
 
 if [ "$PURGE_CONFIG" -eq 1 ]; then
