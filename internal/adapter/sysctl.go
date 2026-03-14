@@ -35,7 +35,7 @@ func (a *SysctlAdapter) Desired(cfg interface{}, decisions interface{}) State {
 
 // Observe читает sysctl.
 func (a *SysctlAdapter) Observe() (State, error) {
-	_ = exec.Command("sysctl", "-n", "net.ipv4.ip_forward").Output()
+	_, _ = exec.Command("sysctl", "-n", "net.ipv4.ip_forward").Output()
 	return &SysctlState{Keys: make(map[string]string)}, nil
 }
 

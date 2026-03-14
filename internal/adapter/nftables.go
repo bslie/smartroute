@@ -2,13 +2,19 @@ package adapter
 
 import (
 	"bytes"
+	"fmt"
 	"os/exec"
+	"sort"
+	"strings"
+
+	"github.com/smartroute/smartroute/internal/domain"
 )
 
 // NFTablesState — состояние таблицы smartroute.
 type NFTablesState struct {
 	Table string
 	Rules []string
+	Raw   string
 }
 
 // NFTablesDiff — изменения (atomic replace).
@@ -31,21 +37,77 @@ func NewNFTablesAdapter(table string) *NFTablesAdapter {
 
 // Desired возвращает желаемое состояние.
 func (a *NFTablesAdapter) Desired(cfg interface{}, decisions interface{}) State {
-	return &NFTablesState{Table: a.TableName, Rules: nil}
+	c, ok := cfg.(*domain.Config)
+	if !ok || c == nil {
+		return &NFTablesState{Table: a.TableName, Rules: nil}
+	}
+	decMap, ok := decisions.(map[string]*domain.Assignment)
+	if !ok {
+		decMap = map[string]*domain.Assignment{}
+	}
+	tunnelIndex := make(map[string]uint8, len(c.Tunnels))
+	for i, t := range c.Tunnels {
+		tunnelIndex[t.Name] = uint8(i + 1)
+	}
+	keys := make([]string, 0, len(decMap))
+	for k := range decMap {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	rules := make([]string, 0, len(keys))
+	for _, k := range keys {
+		asg := decMap[k]
+		if asg == nil || asg.DestIP == nil || asg.TunnelName == "" {
+			continue
+		}
+		idx := tunnelIndex[asg.TunnelName]
+		if idx == 0 {
+			continue
+		}
+		mark := domain.ComposeMark(idx, 0)
+		ip := asg.DestIP.To4()
+		if ip == nil {
+			continue
+		}
+		rules = append(rules, fmt.Sprintf("    ip daddr %s meta mark set 0x%x", ip.String(), mark))
+	}
+	content := buildNFTContent(a.TableName, rules)
+	return &NFTablesState{Table: a.TableName, Rules: rules, Raw: content}
 }
 
 // Observe читает таблицу.
 func (a *NFTablesAdapter) Observe() (State, error) {
-	_, err := exec.Command("nft", "list", "table", "ip", a.TableName).Output()
+	out, err := exec.Command("nft", "list", "table", "ip", a.TableName).Output()
 	if err != nil {
 		return &NFTablesState{Table: a.TableName}, nil
 	}
-	return &NFTablesState{Table: a.TableName, Rules: nil}, nil
+	raw := string(out)
+	lines := strings.Split(raw, "\n")
+	rules := make([]string, 0)
+	for _, ln := range lines {
+		ln = strings.TrimSpace(ln)
+		if strings.HasPrefix(ln, "ip daddr ") && strings.Contains(ln, "meta mark set") {
+			rules = append(rules, "    "+ln)
+		}
+	}
+	sort.Strings(rules)
+	return &NFTablesState{Table: a.TableName, Rules: rules, Raw: raw}, nil
 }
 
 // Plan вычисляет дифф.
 func (a *NFTablesAdapter) Plan(desired, observed State) Diff {
-	return &NFTablesDiff{Content: ""}
+	d, _ := desired.(*NFTablesState)
+	o, _ := observed.(*NFTablesState)
+	if d == nil {
+		return &NFTablesDiff{Content: ""}
+	}
+	if o == nil {
+		o = &NFTablesState{}
+	}
+	if equalStringSlices(d.Rules, o.Rules) {
+		return &NFTablesDiff{Content: ""}
+	}
+	return &NFTablesDiff{Content: d.Raw}
 }
 
 // Apply применяет (nft -f - с контентом в stdin).
@@ -54,6 +116,7 @@ func (a *NFTablesAdapter) Apply(diff Diff) error {
 	if !ok || d.Content == "" {
 		return nil
 	}
+	_ = exec.Command("nft", "delete", "table", "ip", a.TableName).Run()
 	cmd := exec.Command("nft", "-f", "-")
 	cmd.Stdin = bytes.NewReader([]byte(d.Content))
 	return cmd.Run()
@@ -61,6 +124,7 @@ func (a *NFTablesAdapter) Apply(diff Diff) error {
 
 // Verify проверяет.
 func (a *NFTablesAdapter) Verify(desired State) error {
+	_ = desired
 	return nil
 }
 
@@ -68,4 +132,34 @@ func (a *NFTablesAdapter) Verify(desired State) error {
 func (a *NFTablesAdapter) Cleanup() error {
 	_ = exec.Command("nft", "delete", "table", "ip", a.TableName).Run()
 	return nil
+}
+
+func buildNFTContent(table string, rules []string) string {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("table ip %s {\n", table))
+	b.WriteString("  chain sr_prerouting {\n")
+	b.WriteString("    type filter hook prerouting priority mangle; policy accept;\n")
+	for _, r := range rules {
+		b.WriteString(r)
+		b.WriteString("\n")
+	}
+	b.WriteString("  }\n")
+	b.WriteString("}\n")
+	return b.String()
+}
+
+func equalStringSlices(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	aa := append([]string(nil), a...)
+	bb := append([]string(nil), b...)
+	sort.Strings(aa)
+	sort.Strings(bb)
+	for i := range aa {
+		if aa[i] != bb[i] {
+			return false
+		}
+	}
+	return true
 }
