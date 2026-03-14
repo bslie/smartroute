@@ -36,12 +36,14 @@ const (
 
 // TunnelHealth — здоровье туннеля.
 type TunnelHealth struct {
-	Liveness     LivenessStatus
-	Performance  PerformanceStatus
-	Score        float64 // 0.0 (dead) - 1.0 (perfect)
-	PenaltyMs    int
-	LastCheck    time.Time
-	DegradedAt   time.Time
+	Liveness        LivenessStatus
+	Performance     PerformanceStatus
+	Score           float64 // 0.0 (dead) - 1.0 (perfect)
+	PenaltyMs       int
+	LastCheck       time.Time
+	DegradedAt      time.Time
+	HandshakeAgeSec int     // секунды с последнего WG handshake; -1 = неизвестно
+	PacketLossPct   float64 // оценка потери пакетов (0–100)
 }
 
 // Tunnel — туннель WireGuard.

@@ -21,8 +21,9 @@ func TestConfigValidate(t *testing.T) {
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
 	}
+	// Пустой список туннелей допустим (режим без маршрутизации или только управление пользователями).
 	cfg.Tunnels = nil
-	if err := cfg.Validate(); err != ErrNoTunnels {
-		t.Errorf("want ErrNoTunnels, got %v", err)
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("без туннелей Validate не должен возвращать ошибку: %v", err)
 	}
 }

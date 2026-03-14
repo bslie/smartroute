@@ -18,6 +18,16 @@ tunnels:
     route_table: 202
     fwmark: 2
 
+# Управление пользователями (peer'ами) WG-сервера: smartroute user add/remove/edit/list
+wireguard_server:
+  interface: wg0
+  peers_subnet: "10.100.0.0/24"   # подсеть для автовыдачи IP при user add
+  # peers добавляются через CLI (smartroute user add) или вручную:
+  # peers:
+  #   - name: alice
+  #     public_key: xxx
+  #     allowed_ips: 10.100.0.2/32
+
 static_routes:
   - domain: chat.openai.com
     tunnel: ams

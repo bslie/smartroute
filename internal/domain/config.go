@@ -45,6 +45,20 @@ type QoSConfig struct {
 	CakeRTTMs int `yaml:"cake_rtt_ms,omitempty"`
 }
 
+// PeerConfig — peer (пользователь) WireGuard-сервера для управления через CLI.
+type PeerConfig struct {
+	Name       string `yaml:"name"`
+	PublicKey  string `yaml:"public_key"`
+	AllowedIPs string `yaml:"allowed_ips"` // например 10.0.0.2/32
+}
+
+// WireGuardServerConfig — конфиг интерфейса WG-сервера и список peer'ов (пользователей).
+type WireGuardServerConfig struct {
+	Interface      string       `yaml:"interface"`                 // например wg0
+	PeersSubnet    string       `yaml:"peers_subnet,omitempty"`    // подсеть для автовыдачи IP при add, например 10.0.0.0/24
+	Peers          []PeerConfig `yaml:"peers,omitempty"`
+}
+
 // Config — полная конфигурация.
 type Config struct {
 	TickIntervalMs       int           `yaml:"tick_interval_ms,omitempty"`
@@ -63,6 +77,7 @@ type Config struct {
 	HysteresisBulkPct   int           `yaml:"hysteresis_bulk_pct,omitempty"`
 	HysteresisGamePct   int           `yaml:"hysteresis_game_pct,omitempty"`
 	StickyBonus         int           `yaml:"sticky_bonus,omitempty"`
+	WireGuardServer     *WireGuardServerConfig `yaml:"wireguard_server,omitempty"`
 }
 
 // ConfigState — состояние конфига с generation.
@@ -105,8 +120,6 @@ func (c *Config) Validate() error {
 	if _, _, err := net.ParseCIDR(c.ClientSubnet); err != nil {
 		return ErrInvalidConfig
 	}
-	if len(c.Tunnels) == 0 {
-		return ErrNoTunnels
-	}
+	// Туннели могут быть пустыми: режим только управление пользователями (wireguard_server) или отложенный старт маршрутизации.
 	return nil
 }
