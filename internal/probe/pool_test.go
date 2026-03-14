@@ -10,18 +10,17 @@ import (
 )
 
 func TestPool_SubmitAndResult(t *testing.T) {
-	results := make(chan Result, 2)
-		probeFn := func(host, iface string, timeout interface{}) Result {
-			return Result{
-				DestIP:     nil,
-			Tunnel:     "",
+	probeFn := func(j Job) Result {
+		return Result{
+			DestIP:     j.DestIP,
+			Tunnel:     j.Tunnel,
 			Type:       domain.ProbeTCP,
 			LatencyMs:  10,
 			ErrorClass: domain.ErrorNone,
 			Confidence: 0.9,
-				Timestamp:  time.Now(),
-			}
+			Timestamp:  time.Now(),
 		}
+	}
 	pool := NewPool(1, probeFn)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()

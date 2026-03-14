@@ -12,11 +12,11 @@ type Pool struct {
 	results chan Result
 	done    chan struct{}
 	wg      sync.WaitGroup
-	probeFn func(host, iface string, timeout interface{}) Result
+	probeFn func(Job) Result
 }
 
-// NewPool создаёт пул. probeFn инжектируется (для тестов — mock).
-func NewPool(workers int, probeFn func(host, iface string, timeout interface{}) Result) *Pool {
+// NewPool создаёт пул. probeFn вызывается с полным Job (диспетчеризация по Type: tcp/http/icmp).
+func NewPool(workers int, probeFn func(Job) Result) *Pool {
 	if workers <= 0 {
 		workers = 5
 	}
@@ -49,8 +49,7 @@ func (p *Pool) worker(ctx context.Context) {
 			if !ok {
 				return
 			}
-			var timeout interface{} = j.Timeout
-			r := p.probeFn(j.DestIP.String(), j.Iface, timeout)
+			r := p.probeFn(j)
 			r.DestIP = j.DestIP
 			r.Tunnel = j.Tunnel
 			r.Type = j.Type
