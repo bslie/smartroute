@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -36,6 +38,60 @@ func init() {
 	runCmd.Flags().StringVar(&runStateFile, "state-file", "/var/run/smartroute/state.json", "файл состояния для status")
 }
 
+// findInstallWireGuardScript возвращает путь к scripts/install-wireguard.sh или пустую строку.
+func findInstallWireGuardScript() string {
+	if p := os.Getenv("SMARTROUTE_INSTALL_WG_SCRIPT"); p != "" {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	exe, err := os.Executable()
+	if err == nil {
+		dir := filepath.Dir(exe)
+		for _, rel := range []string{
+			filepath.Join(dir, "..", "share", "smartroute", "install-wireguard.sh"),
+			filepath.Join(dir, "..", "scripts", "install-wireguard.sh"),
+		} {
+			if p, err := filepath.Abs(rel); err == nil {
+				if _, err := os.Stat(p); err == nil {
+					return p
+				}
+			}
+		}
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		p := filepath.Join(cwd, "scripts", "install-wireguard.sh")
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
+}
+
+// ensureWireGuard проверяет наличие wg; при отсутствии запускает скрипт установки.
+func ensureWireGuard() error {
+	engine.RefreshCapabilities()
+	if engine.HasWireGuard() {
+		return nil
+	}
+	script := findInstallWireGuardScript()
+	if script == "" {
+		return fmt.Errorf("WireGuard не найден. Установите: apt install wireguard wireguard-tools (или dnf/apk). Переменная SMARTROUTE_INSTALL_WG_SCRIPT может указывать на скрипт установки")
+	}
+	// Запуск скрипта (он сам вызовет sudo при необходимости)
+	sh := exec.Command("sh", script)
+	sh.Stdout = os.Stdout
+	sh.Stderr = os.Stderr
+	if err := sh.Run(); err != nil {
+		return fmt.Errorf("установка WireGuard не удалась: %w", err)
+	}
+	engine.RefreshCapabilities()
+	if !engine.HasWireGuard() {
+		return fmt.Errorf("после установки WireGuard команда wg по-прежнему недоступна. Проверьте PATH или перезапустите терминал")
+	}
+	return nil
+}
+
 func runRun(cmd *cobra.Command, args []string) error {
 	data, err := os.ReadFile(runConfigPath)
 	if err != nil {
@@ -47,6 +103,13 @@ func runRun(cmd *cobra.Command, args []string) error {
 	}
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("validate: %w", err)
+	}
+
+	// Проверка WireGuard: при отсутствии — попытка установки (невидимо для пользователя).
+	if len(cfg.Tunnels) > 0 {
+		if err := ensureWireGuard(); err != nil {
+			return err
+		}
 	}
 
 	st := store.New()
