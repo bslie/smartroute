@@ -21,7 +21,7 @@ SmartRoute **не является и не стремится быть**:
 - Полноценным L7 proxy или DPI-системой.
 - Mesh/SD-WAN controller.
 - Системой миграции active TCP flows.
-- Менеджером удалённых VPS после bootstrap (gen-remote — convenience tool, не orchestrator).
+- Менеджером удалённых VPS после bootstrap (настройка через smartroute tunnel add и скрипт setup-vps-*.sh, не orchestrator).
 - Решением multi-tenant isolation.
 - Гарантией application-layer success (маршрут выбран, но приложение может всё равно получить ошибку).
 - Deep packet inspection beyond limited signals (SNI, DNS cache, port heuristic).
@@ -911,7 +911,7 @@ type ConfigState struct {
 
 - WG private keys: файлы `0600`, путь в конфиге (`private_key_file:`), не inline.
 - MemLog, events, explain, dump: **никогда** не содержат private keys. Logging sanitizes exec args.
-- `gen-remote`: содержит только public key. Private key генерируется на месте.
+- Скрипт setup-vps-*.sh (генерируется при tunnel add): в него подставляется только public key клиента; private key клиента хранится локально в keys/.
 
 ### Threat surface
 
@@ -1168,14 +1168,14 @@ smartroute/
 ### Фаза 2: WireGuard lifecycle
 
 **Артефакт**: управление туннелями.
-**Критерии**: add/remove/list; gen-remote идемпотентен; повторный add идемпотентен; dependency: route создаётся только если interface up.
+**Критерии**: add/remove/list; скрипт настройки VPS идемпотентен; повторный add идемпотентен; dependency: route создаётся только если interface up.
 
 
 | Критерий                        | Выполнено | Примечание                                                       |
 | ------------------------------- | --------- | ---------------------------------------------------------------- |
 | list                            | да        | `smartroute tunnel list` из конфига                              |
-| add/remove                      | частично  | через конфиг; отдельные CLI add/remove — заглушка                |
-| gen-remote идемпотентен         | да        | scripts/gen-remote.sh: check → apply, повторный запуск безопасен |
+| add/remove                      | да        | `smartroute tunnel add/remove`; ключи генерируются автоматически |
+| скрипт VPS идемпотентен         | да        | setup-vps-&lt;name&gt;.sh: check → apply, повторный запуск безопасен |
 | dependency route → interface up | да        | порядок адаптеров: wg → route → rule → nft → tc                  |
 
 
