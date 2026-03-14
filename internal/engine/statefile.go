@@ -6,32 +6,60 @@ import (
 	"sync"
 	"time"
 
+	"github.com/smartroute/smartroute/internal/metrics"
 	"github.com/smartroute/smartroute/internal/store"
 )
 
 // StateSnapshot — снимок для записи в файл (CLI читает без демона).
 type StateSnapshot struct {
-	Generation     uint64    `json:"generation"`
-	Applied        uint64    `json:"applied"`
-	Ready          bool      `json:"ready"`
-	ActiveProfile  string    `json:"active_profile"`
-	TunnelNames    []string  `json:"tunnel_names"`
-	DestCount      int       `json:"dest_count"`
-	DisabledFeat   []string  `json:"disabled_features,omitempty"`
-	At             time.Time `json:"at"`
+	Generation        uint64    `json:"generation"`
+	Applied           uint64    `json:"applied"`
+	ConfigGeneration  uint64    `json:"config_generation"`
+	AppliedConfigGen  uint64    `json:"applied_config_gen"`
+	Ready             bool      `json:"ready"`
+	ActiveProfile     string    `json:"active_profile"`
+	TunnelNames       []string  `json:"tunnel_names"`
+	DestCount         int       `json:"dest_count"`
+	DisabledFeat      []string  `json:"disabled_features,omitempty"`
+	At                time.Time `json:"at"`
+
+	// Metrics
+	ReconcileCycles    uint64 `json:"reconcile_cycles_total"`
+	ReconcileErrors    uint64 `json:"reconcile_errors_total"`
+	ProbeTotal         uint64 `json:"probe_total"`
+	ProbeFailed        uint64 `json:"probe_failed_total"`
+	AssignmentSwitches uint64 `json:"assignment_switches_total"`
+	TunnelDegraded     uint64 `json:"tunnel_degraded_events_total"`
+	RuleSyncAdds       uint64 `json:"rule_sync_adds"`
+	RuleSyncDels       uint64 `json:"rule_sync_dels"`
+	TCFlushCount       uint64 `json:"tc_flush_count"`
+	TCFlushDurationMs  int64  `json:"tc_flush_duration_ms"`
 }
 
 // BuildStateSnapshot строит снимок из store. Вызывающий код должен держать st.Lock().
 func BuildStateSnapshot(st *store.Store) StateSnapshot {
+	m := metrics.LoadAll()
 	return StateSnapshot{
-		Generation:     st.Generation,
-		Applied:        st.AppliedGen,
-		Ready:          st.Ready,
-		ActiveProfile:  st.ActiveProfile,
-		TunnelNames:    st.Tunnels.Names(),
-		DestCount:      st.Destinations.Count(),
-		DisabledFeat:   defaultCaps.DisabledFeatures(),
-		At:             time.Now(),
+		Generation:         st.Generation,
+		Applied:            st.AppliedGen,
+		ConfigGeneration:   st.ConfigGeneration,
+		AppliedConfigGen:   st.AppliedConfigGen,
+		Ready:              st.Ready,
+		ActiveProfile:      st.ActiveProfile,
+		TunnelNames:        st.Tunnels.Names(),
+		DestCount:          st.Destinations.Count(),
+		DisabledFeat:       defaultCaps.DisabledFeatures(),
+		At:                 time.Now(),
+		ReconcileCycles:    m.ReconcileCycles,
+		ReconcileErrors:    m.ReconcileErrors,
+		ProbeTotal:         m.ProbeTotal,
+		ProbeFailed:        m.ProbeFailed,
+		AssignmentSwitches: m.AssignmentSwitches,
+		TunnelDegraded:     m.TunnelDegraded,
+		RuleSyncAdds:       m.RuleSyncAdds,
+		RuleSyncDels:       m.RuleSyncDels,
+		TCFlushCount:       m.TCFlushCount,
+		TCFlushDurationMs:  m.TCFlushDurationMs,
 	}
 }
 

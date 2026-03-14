@@ -41,6 +41,11 @@ func (c *Capabilities) Get() (conntrack, nft, tc, wg, dnslog bool) {
 	return c.Conntrack, c.Nftables, c.TC, c.WireGuard, c.DNSLog
 }
 
+// RefreshCapabilities заново определяет возможности ОС (вызов в bootstrap).
+func RefreshCapabilities() {
+	DetectCapabilities(&defaultCaps)
+}
+
 // DisabledFeatures возвращает список отключённых фич для status.
 func (c *Capabilities) DisabledFeatures() []string {
 	co, nf, tc, wg, dns := c.Get()

@@ -16,7 +16,8 @@ func Bootstrap(
 		return err
 	}
 	// 2. Init empty store — store уже создан
-	// 3. Check OS capabilities — упрощённо пропускаем (можно добавить conntrack/nft/tc/wg)
+	// 3. Check OS capabilities
+	RefreshCapabilities()
 	// 4. Disable unavailable features — пропускаем
 	// 5. Init adapters — передаются снаружи в Reconciler
 	// 6. Observe initial — делается в первом reconcile
