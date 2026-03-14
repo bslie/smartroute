@@ -1,13 +1,16 @@
 package cli
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/bslie/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/engine"
 	"github.com/spf13/cobra"
 )
 
@@ -27,7 +30,7 @@ var userListCmd = &cobra.Command{
 
 var userAddCmd = &cobra.Command{
 	Use:   "add <name> [allowed_ips]",
-	Short: "Добавить пользователя (peer). Если allowed_ips не указан, выдаётся следующий IP из peers_subnet.",
+	Short: "Добавить пользователя: генерирует ключи, сохраняет конфиг, показывает QR-код",
 	Args:  cobra.RangeArgs(1, 2),
 	RunE:  runUserAdd,
 }
@@ -89,6 +92,86 @@ func runUserList(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// serverPublicKey получает публичный ключ серверного интерфейса через wg show.
+func serverPublicKey(iface string) string {
+	out, err := exec.Command("wg", "show", iface, "public-key").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// serverEndpoint пытается определить внешний IP сервера (для показа в клиентском конфиге).
+func serverEndpoint(listenPort string) string {
+	// Пробуем получить внешний IP через ip route и curl; если не получилось — подсказка-заглушка
+	out, err := exec.Command("sh", "-c", `curl -s --max-time 3 ifconfig.me || curl -s --max-time 3 api.ipify.org || true`).Output()
+	ip := strings.TrimSpace(string(out))
+	if err != nil || ip == "" || net.ParseIP(ip) == nil {
+		return "<IP_СЕРВЕРА>:" + listenPort
+	}
+	return ip + ":" + listenPort
+}
+
+// userKeysDir возвращает каталог для ключей пользователей: <каталог конфига>/peers.
+func userKeysDir() string {
+	return filepath.Join(filepath.Dir(userConfigPath), "peers")
+}
+
+// generateUserKeyPair генерирует пару ключей для пользователя, сохраняет приватный ключ.
+func generateUserKeyPair(name string) (privKeyPath, privKey, pubKey string, err error) {
+	dir := userKeysDir()
+	if err = os.MkdirAll(dir, 0700); err != nil {
+		return "", "", "", fmt.Errorf("создать каталог %s: %w", dir, err)
+	}
+	privKeyPath = filepath.Join(dir, name+".key")
+
+	privOut, err := exec.Command("wg", "genkey").Output()
+	if err != nil {
+		return "", "", "", fmt.Errorf("wg genkey: %w", err)
+	}
+	privKey = strings.TrimSpace(string(privOut))
+	if err = os.WriteFile(privKeyPath, []byte(privKey+"\n"), 0600); err != nil {
+		return "", "", "", fmt.Errorf("записать ключ %s: %w", privKeyPath, err)
+	}
+
+	pubCmd := exec.Command("wg", "pubkey")
+	pubCmd.Stdin = strings.NewReader(privKey)
+	pubOut, err := pubCmd.Output()
+	if err != nil {
+		_ = os.Remove(privKeyPath)
+		return "", "", "", fmt.Errorf("wg pubkey: %w", err)
+	}
+	pubKey = strings.TrimSpace(string(pubOut))
+	return privKeyPath, privKey, pubKey, nil
+}
+
+// buildClientConfig формирует текст WG-конфига для клиентского устройства.
+func buildClientConfig(privKey, allowedIPs, serverPubKey, serverEndpoint string) string {
+	// IP интерфейса клиента = allowedIPs (например 10.0.0.2/32)
+	return fmt.Sprintf(`[Interface]
+PrivateKey = %s
+Address = %s
+DNS = 1.1.1.1
+
+[Peer]
+PublicKey = %s
+Endpoint = %s
+AllowedIPs = 0.0.0.0/0, ::/0
+PersistentKeepalive = 25
+`, privKey, allowedIPs, serverPubKey, serverEndpoint)
+}
+
+// printQR выводит QR-код конфига в терминал через qrencode (если доступен).
+func printQR(content string) {
+	cmd := exec.Command("qrencode", "-t", "UTF8", "-l", "L")
+	cmd.Stdin = bytes.NewBufferString(content)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		fmt.Println("[!] QR-код не показан: установите qrencode (apt install qrencode)")
+	}
+}
+
 func runUserAdd(cmd *cobra.Command, args []string) error {
 	name := args[0]
 	var allowedIPs string
@@ -104,7 +187,6 @@ func runUserAdd(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-
 	for _, p := range ws.Peers {
 		if p.Name == name {
 			return fmt.Errorf("пользователь %q уже существует", name)
@@ -118,33 +200,57 @@ func runUserAdd(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Генерируем ключи
-	privateKey, err := exec.Command("wg", "genkey").Output()
-	if err != nil {
-		return fmt.Errorf("wg genkey: %w", err)
+	// Проверяем WG
+	engine.RefreshCapabilities()
+	if !engine.HasWireGuard() {
+		if err := ensureWireGuard(); err != nil {
+			return fmt.Errorf("для добавления пользователя нужен WireGuard: %w", err)
+		}
 	}
-	pubCmd := exec.Command("wg", "pubkey")
-	pubCmd.Stdin = strings.NewReader(strings.TrimSpace(string(privateKey)))
-	publicKey, err := pubCmd.Output()
-	if err != nil {
-		return fmt.Errorf("wg pubkey: %w", err)
-	}
-	pubStr := strings.TrimSpace(string(publicKey))
 
-	peer := domain.PeerConfig{Name: name, PublicKey: pubStr, AllowedIPs: allowedIPs}
+	privKeyPath, privKey, pubKey, err := generateUserKeyPair(name)
+	if err != nil {
+		return err
+	}
+
+	peer := domain.PeerConfig{Name: name, PublicKey: pubKey, AllowedIPs: allowedIPs}
 	ws.Peers = append(ws.Peers, peer)
 
 	if err := saveConfig(userConfigPath, cfg); err != nil {
 		return err
 	}
 
-	// Применяем на интерфейс
-	if err := wgSetPeer(ws.Interface, pubStr, allowedIPs); err != nil {
-		return fmt.Errorf("добавлен в конфиг, но wg set не выполнен: %w", err)
+	// Применяем peer на интерфейс (best-effort: сервер может не быть запущен)
+	if wgErr := wgSetPeer(ws.Interface, pubKey, allowedIPs); wgErr != nil {
+		fmt.Fprintf(os.Stderr, "[!] Сохранено в конфиг, но wg set не выполнен (%v). Перезапустите smartroute run.\n", wgErr)
 	}
 
-	fmt.Fprintf(os.Stderr, "[OK] Пользователь %q добавлен. AllowedIPs: %s\n", name, allowedIPs)
-	fmt.Println(strings.TrimSpace(string(privateKey)))
+	// Определяем данные сервера для клиентского конфига
+	srvPub := serverPublicKey(ws.Interface)
+	listenPort := "51820"
+	if out, err := exec.Command("wg", "show", ws.Interface, "listen-port").Output(); err == nil {
+		if p := strings.TrimSpace(string(out)); p != "" {
+			listenPort = p
+		}
+	}
+	srvEndpoint := serverEndpoint(listenPort)
+
+	clientCfg := buildClientConfig(privKey, allowedIPs, srvPub, srvEndpoint)
+
+	// Сохраняем клиентский конфиг рядом с ключом
+	cfgPath := filepath.Join(userKeysDir(), name+".conf")
+	_ = os.WriteFile(cfgPath, []byte(clientCfg), 0600)
+
+	fmt.Printf("\n[OK] Пользователь %q добавлен. AllowedIPs: %s\n", name, allowedIPs)
+	fmt.Printf("Ключ сохранён: %s\n", privKeyPath)
+	fmt.Printf("Конфиг клиента: %s\n\n", cfgPath)
+	fmt.Println("=== Конфиг для WireGuard-приложения (скопируйте вручную или отсканируйте QR) ===")
+	fmt.Println(clientCfg)
+	fmt.Println("=== QR-код ===")
+	printQR(clientCfg)
+	if srvPub == "" {
+		fmt.Println("\n[!] Публичный ключ сервера не найден — интерфейс", ws.Interface, "ещё не поднят. Конфиг клиента будет верным после smartroute run.")
+	}
 	return nil
 }
 
@@ -178,8 +284,14 @@ func runUserRemove(cmd *cobra.Command, args []string) error {
 	}
 
 	if err := wgRemovePeer(ws.Interface, pubKey); err != nil {
-		return fmt.Errorf("удалён из конфига, но wg set remove не выполнен: %w", err)
+		fmt.Fprintf(os.Stderr, "[!] Удалён из конфига, но wg set remove не выполнен: %v\n", err)
 	}
+
+	// Удаляем файлы ключа и конфига
+	dir := userKeysDir()
+	_ = os.Remove(filepath.Join(dir, name+".key"))
+	_ = os.Remove(filepath.Join(dir, name+".conf"))
+
 	fmt.Printf("[OK] Пользователь %q удалён.\n", name)
 	return nil
 }
@@ -212,7 +324,7 @@ func runUserEdit(cmd *cobra.Command, args []string) error {
 	}
 
 	if err := wgSetPeer(ws.Interface, pubKey, userEditAllowedIPs); err != nil {
-		return fmt.Errorf("конфиг обновлён, но wg set не выполнен: %w", err)
+		fmt.Fprintf(os.Stderr, "[!] Конфиг обновлён, но wg set не выполнен: %v\n", err)
 	}
 	fmt.Printf("[OK] Пользователь %q обновлён: allowed_ips=%s\n", name, userEditAllowedIPs)
 	return nil
@@ -234,7 +346,6 @@ func nextAllowedIP(ws *domain.WireGuardServerConfig) (string, error) {
 		}
 		used[ip.String()] = true
 	}
-	// Ищем следующий свободный /32 в подсети (начинаем с .2, .3, ...)
 	ones, bits := subnet.Mask.Size()
 	if bits != 32 || ones >= 31 {
 		return "", fmt.Errorf("peers_subnet должен быть IPv4 подсеть (например 10.0.0.0/24)")
@@ -243,7 +354,7 @@ func nextAllowedIP(ws *domain.WireGuardServerConfig) (string, error) {
 	if ip == nil {
 		return "", fmt.Errorf("только IPv4")
 	}
-	// Пропускаем .0 и .1
+	// Пропускаем .0 и .1 (сеть и шлюз)
 	for i := 2; i < 256; i++ {
 		ip[3] = byte(i)
 		if !subnet.Contains(ip) {
