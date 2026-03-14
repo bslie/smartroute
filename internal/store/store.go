@@ -16,11 +16,13 @@ type Store struct {
 	Assignments  *AssignmentStore
 	History      *HistoryStore
 
-	ConfigState *domain.ConfigState
-	Generation  uint64
-	AppliedGen  uint64
-	ActiveProfile string
-	Ready       bool
+	ConfigState     *domain.ConfigState
+	Generation      uint64 // tick counter
+	AppliedGen      uint64
+	ConfigGeneration uint64 // увеличивается при каждом успешном reload
+	AppliedConfigGen uint64 // последняя применённая config generation
+	ActiveProfile   string
+	Ready           bool
 }
 
 // New создаёт Store с дефолтными подхранилищами.

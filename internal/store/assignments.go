@@ -54,3 +54,10 @@ func (s *AssignmentStore) All() map[string]*domain.Assignment {
 	}
 	return out
 }
+
+// Delete удаляет назначение по IP (GC при stale/expired destinations).
+func (s *AssignmentStore) Delete(ip net.IP) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.byIP, ipKey(ip))
+}
