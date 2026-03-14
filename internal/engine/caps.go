@@ -63,6 +63,12 @@ func RefreshCapabilitiesFromConfig(cfg *domain.Config) {
 	}
 }
 
+// HasWireGuard возвращает true, если в системе доступна команда wg.
+func HasWireGuard() bool {
+	_, _, _, wg, _ := defaultCaps.Get()
+	return wg
+}
+
 // DisabledFeatures возвращает список отключённых фич для status.
 func (c *Capabilities) DisabledFeatures() []string {
 	co, nf, tc, wg, dns := c.Get()
