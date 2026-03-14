@@ -1,6 +1,7 @@
 package adapter
 
 import (
+	"bytes"
 	"os/exec"
 )
 
@@ -47,13 +48,15 @@ func (a *NFTablesAdapter) Plan(desired, observed State) Diff {
 	return &NFTablesDiff{Content: ""}
 }
 
-// Apply применяет (nft -f).
+// Apply применяет (nft -f - с контентом в stdin).
 func (a *NFTablesAdapter) Apply(diff Diff) error {
 	d, ok := diff.(*NFTablesDiff)
 	if !ok || d.Content == "" {
 		return nil
 	}
-	return exec.Command("nft", "-f", "-").Run()
+	cmd := exec.Command("nft", "-f", "-")
+	cmd.Stdin = bytes.NewReader([]byte(d.Content))
+	return cmd.Run()
 }
 
 // Verify проверяет.

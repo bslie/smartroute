@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -16,6 +17,7 @@ type Reconciler struct {
 	minInterval time.Duration
 	lastRun    time.Time
 	pending    *pendingReconcile
+	onError    func(adapterName, phase string, err error)
 }
 
 type pendingReconcile struct {
@@ -29,6 +31,11 @@ func NewReconciler(adapters []adapter.Reconcilable, minInterval time.Duration) *
 		minInterval = 500 * time.Millisecond
 	}
 	return &Reconciler{adapters: adapters, minInterval: minInterval}
+}
+
+// SetErrorLog задаёт callback для логирования ошибок адаптеров (Observe/Apply).
+func (r *Reconciler) SetErrorLog(fn func(adapterName, phase string, err error)) {
+	r.onError = fn
 }
 
 // TriggerReconcile ставит в очередь reconcile (debounce).
@@ -54,14 +61,24 @@ func (r *Reconciler) run(p *pendingReconcile) {
 	}
 	decisions := p.st.Assignments.All()
 	for _, rec := range r.adapters {
+		name := adapterName(rec)
 		desired := rec.Desired(p.cfg, decisions)
 		observed, err := rec.Observe()
 		if err != nil {
+			if r.onError != nil {
+				r.onError(name, "observe", err)
+			}
 			continue
 		}
 		diff := rec.Plan(desired, observed)
-		_ = rec.Apply(diff)
+		if err := rec.Apply(diff); err != nil && r.onError != nil {
+			r.onError(name, "apply", err)
+		}
 	}
+}
+
+func adapterName(rec adapter.Reconcilable) string {
+	return fmt.Sprintf("%T", rec)
 }
 
 // RunFullReconcile блокирующий полный цикл (для bootstrap).

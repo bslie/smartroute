@@ -21,13 +21,9 @@ type StateSnapshot struct {
 	At             time.Time `json:"at"`
 }
 
-// WriteStateFile записывает снимок store в файл (вызывать из engine после tick).
-func WriteStateFile(st *store.Store, path string) error {
-	if path == "" {
-		return nil
-	}
-	st.RLock()
-	snap := StateSnapshot{
+// BuildStateSnapshot строит снимок из store. Вызывающий код должен держать st.Lock().
+func BuildStateSnapshot(st *store.Store) StateSnapshot {
+	return StateSnapshot{
 		Generation:     st.Generation,
 		Applied:        st.AppliedGen,
 		Ready:          st.Ready,
@@ -37,12 +33,29 @@ func WriteStateFile(st *store.Store, path string) error {
 		DisabledFeat:   defaultCaps.DisabledFeatures(),
 		At:             time.Now(),
 	}
-	st.RUnlock()
+}
+
+// WriteStateFileFromSnapshot записывает готовый снимок в файл (без доступа к store).
+func WriteStateFileFromSnapshot(snap *StateSnapshot, path string) error {
+	if path == "" {
+		return nil
+	}
 	data, err := json.Marshal(snap)
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(path, data, 0644)
+}
+
+// WriteStateFile записывает снимок store в файл. Для вызова при уже захваченном Lock используйте BuildStateSnapshot + WriteStateFileFromSnapshot.
+func WriteStateFile(st *store.Store, path string) error {
+	if path == "" {
+		return nil
+	}
+	st.RLock()
+	snap := BuildStateSnapshot(st)
+	st.RUnlock()
+	return WriteStateFileFromSnapshot(&snap, path)
 }
 
 // ReadStateFile читает снимок из файла (для CLI status).
@@ -60,12 +73,12 @@ func ReadStateFile(path string) (*StateSnapshot, error) {
 
 var stateFileMu sync.Mutex
 
-// WriteStateFileSafe — потокобезопасная запись (один writer).
-func WriteStateFileSafe(st *store.Store, path string) {
+// WriteStateFileSafe записывает готовый снимок в файл (потокобезопасно). Не держит блокировку store — снимок должен быть построен под Lock в вызывающем коде.
+func WriteStateFileSafe(snap *StateSnapshot, path string) {
 	if path == "" {
 		return
 	}
 	stateFileMu.Lock()
 	defer stateFileMu.Unlock()
-	_ = WriteStateFile(st, path)
+	_ = WriteStateFileFromSnapshot(snap, path)
 }

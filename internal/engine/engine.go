@@ -77,8 +77,8 @@ func (e *Engine) tick(ctx context.Context) {
 	e.Store.Lock()
 	defer e.Store.Unlock()
 	e.Store.Generation++
-	// Упрощённо: обновляем только туннели из конфига и готовность.
-	if e.Store.Tunnels.Names() == nil && len(cfg.Tunnels) > 0 {
+	// Упрощённо: обновляем только туннели из конфига и готовность (при первом тике или пустом store).
+	if len(e.Store.Tunnels.Names()) == 0 && len(cfg.Tunnels) > 0 {
 		for _, tc := range cfg.Tunnels {
 			t := &domain.Tunnel{
 				Name: tc.Name, Endpoint: tc.Endpoint, Interface: "wg-" + tc.Name,
@@ -122,7 +122,8 @@ func (e *Engine) tick(ctx context.Context) {
 	// Отправка desired state в reconciler (debounced)
 	e.Reconciler.TriggerReconcile(cfg, e.Store)
 	e.Store.AppliedGen = e.Store.Generation
-	WriteStateFileSafe(e.Store, e.StateFile)
+	snap := BuildStateSnapshot(e.Store)
+	WriteStateFileSafe(&snap, e.StateFile)
 }
 
 // Stop останавливает tick loop.

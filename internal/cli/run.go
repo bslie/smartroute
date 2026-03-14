@@ -66,6 +66,9 @@ func runRun(cmd *cobra.Command, args []string) error {
 		adapter.NewTCAdapter(managedIfaces),
 	}
 	rec := engine.NewReconciler(adapters, 500*time.Millisecond)
+	rec.SetErrorLog(func(adapterName, phase string, err error) {
+		ml.Write("error", adapterName+": "+phase+": "+err.Error())
+	})
 
 	var cfgMu sync.RWMutex
 	cfgPtr := cfg
