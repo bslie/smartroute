@@ -3,13 +3,15 @@ package cli
 import (
 	"fmt"
 
-	"github.com/smartroute/smartroute/internal/adapter"
+	"github.com/bslie/smartroute/internal/adapter"
 	"github.com/spf13/cobra"
 )
 
+const sysoptBackupPath = "/var/run/smartroute/sysctl_backup.json"
+
 var (
-	sysoptDryRun  bool
-	sysoptBackup  bool
+	sysoptDryRun   bool
+	sysoptBackup   bool
 	sysoptRollback bool
 )
 
@@ -39,7 +41,10 @@ func init() {
 }
 
 func runSysoptApply(cmd *cobra.Command, args []string) error {
-	a := adapter.NewSysctlAdapter([]string{"net.ipv4.ip_forward"})
+	a := adapter.NewSysctlAdapter(nil)
+	if sysoptBackup {
+		a.BackupPath = sysoptBackupPath
+	}
 	desired := a.Desired(nil, nil)
 	observed, err := a.Observe()
 	if err != nil {
@@ -54,12 +59,17 @@ func runSysoptApply(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	if sysoptBackup {
-		fmt.Println("backup: saving current values (stub — backup path in adapter)")
+		fmt.Println("backup: saving current values to", sysoptBackupPath)
 	}
 	return a.Apply(diff)
 }
 
 func runSysoptRollback(cmd *cobra.Command, args []string) error {
-	fmt.Println("rollback: restore from backup (stub — implement in SysctlAdapter)")
+	a := adapter.NewSysctlAdapter(nil)
+	a.BackupPath = sysoptBackupPath
+	if err := a.Restore(); err != nil {
+		return fmt.Errorf("rollback: %w", err)
+	}
+	fmt.Println("rollback: restored sysctl from", sysoptBackupPath)
 	return nil
 }

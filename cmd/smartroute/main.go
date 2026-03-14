@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/smartroute/smartroute/internal/cli"
+	"github.com/bslie/smartroute/internal/cli"
 )
 
 var version = "0.1.0"

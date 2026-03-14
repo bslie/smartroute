@@ -4,7 +4,7 @@ import (
 	"net"
 	"testing"
 
-	"github.com/smartroute/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/domain"
 )
 
 func TestDecider_Decide(t *testing.T) {

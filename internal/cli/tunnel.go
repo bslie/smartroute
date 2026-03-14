@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/smartroute/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/domain"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )

@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/smartroute/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/domain"
 )
 
 // Store — агрегат runtime state. Engine — единственный writer; CLI читает под RLock.

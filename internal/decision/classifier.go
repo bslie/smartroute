@@ -1,7 +1,7 @@
 package decision
 
 import (
-	"github.com/smartroute/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/domain"
 )
 
 // ClassifierSource — источник классификации и его confidence.

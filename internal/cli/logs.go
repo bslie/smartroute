@@ -2,9 +2,8 @@ package cli
 
 import (
 	"fmt"
-	"time"
 
-	"github.com/smartroute/smartroute/internal/memlog"
+	"github.com/bslie/smartroute/internal/engine"
 	"github.com/spf13/cobra"
 )
 
@@ -23,10 +22,14 @@ func init() {
 }
 
 func runLogs(cmd *cobra.Command, args []string) error {
-	ring := memlog.NewRing(2048)
-	entries := ring.LastN(logsN)
-	for _, e := range entries {
-		fmt.Printf("%s [%s] %s\n", e.Time.Format(time.RFC3339), e.Level, e.Message)
+	// Memlog хранится только в памяти демона. Для получения логов извне нужен IPC или
+	// запись в файл. Читаем state-файл как подтверждение работы демона.
+	snap, err := engine.ReadStateFile(runStateFile)
+	if err != nil {
+		return fmt.Errorf("демон не запущен или state-файл недоступен: %w", err)
 	}
+	fmt.Printf("SmartRoute запущен (generation=%d, reconcile_cycles=%d, reconcile_errors=%d)\n",
+		snap.Generation, snap.ReconcileCycles, snap.ReconcileErrors)
+	fmt.Printf("Журнал работы (memlog) доступен только внутри процесса демона.\n")
 	return nil
 }

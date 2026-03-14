@@ -3,8 +3,8 @@ package cli
 import (
 	"fmt"
 
-	"github.com/smartroute/smartroute/internal/engine"
-	"github.com/smartroute/smartroute/internal/store"
+	"github.com/bslie/smartroute/internal/engine"
+	"github.com/bslie/smartroute/internal/store"
 	"github.com/spf13/cobra"
 )
 

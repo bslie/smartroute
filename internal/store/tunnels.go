@@ -3,7 +3,7 @@ package store
 import (
 	"sync"
 
-	"github.com/smartroute/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/domain"
 )
 
 // TunnelStore — туннели по имени.
@@ -58,4 +58,11 @@ func (s *TunnelStore) Names() []string {
 		names = append(names, n)
 	}
 	return names
+}
+
+// Delete удаляет туннель по имени (hot-reload: туннель убран из конфига).
+func (s *TunnelStore) Delete(name string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.byName, name)
 }

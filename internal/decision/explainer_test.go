@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/smartroute/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/domain"
 )
 
 func TestBuildSnapshot(t *testing.T) {
@@ -18,7 +18,7 @@ func TestBuildSnapshot(t *testing.T) {
 			CreatedAt: time.Now(), StickyCount: 3, IsSticky: true,
 		},
 	}
-	s := BuildSnapshot(d, time.Now(), "game")
+	s := BuildSnapshot(d, time.Now(), "game", time.Time{})
 	if s.Tunnel != "ams" || s.Profile != "game" {
 		t.Errorf("tunnel=%s profile=%s", s.Tunnel, s.Profile)
 	}

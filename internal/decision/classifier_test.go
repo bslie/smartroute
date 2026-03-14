@@ -3,7 +3,7 @@ package decision
 import (
 	"testing"
 
-	"github.com/smartroute/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/domain"
 )
 
 func TestClassifier_Classify(t *testing.T) {

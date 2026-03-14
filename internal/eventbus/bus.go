@@ -3,7 +3,7 @@ package eventbus
 import (
 	"sync"
 
-	"github.com/smartroute/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/domain"
 )
 
 // Bus — шина событий с кольцевым буфером.

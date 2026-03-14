@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/smartroute/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/domain"
 )
 
 // DestHistoryRecord — лёгкая запись истории после GC.

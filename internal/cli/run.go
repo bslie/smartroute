@@ -10,12 +10,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/smartroute/smartroute/internal/adapter"
-	"github.com/smartroute/smartroute/internal/domain"
-	"github.com/smartroute/smartroute/internal/engine"
-	"github.com/smartroute/smartroute/internal/eventbus"
-	"github.com/smartroute/smartroute/internal/memlog"
-	"github.com/smartroute/smartroute/internal/store"
+	"github.com/bslie/smartroute/internal/adapter"
+	"github.com/bslie/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/engine"
+	"github.com/bslie/smartroute/internal/eventbus"
+	"github.com/bslie/smartroute/internal/memlog"
+	"github.com/bslie/smartroute/internal/store"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -53,18 +53,15 @@ func runRun(cmd *cobra.Command, args []string) error {
 	bus := eventbus.New(64, 200)
 	ml := memlog.NewRing(2048)
 
-	// Адаптеры в порядке зависимостей: sysctl, wg, route, rule, nft, tc
-	managedIfaces := make([]string, 0, len(cfg.Tunnels))
-	for _, t := range cfg.Tunnels {
-		managedIfaces = append(managedIfaces, "wg-"+t.Name)
-	}
+	// Адаптеры в порядке зависимостей: sysctl, wg, route, rule, nft, tc.
+	// TCAdapter с пустым ManagedIfaces — список интерфейсов берётся из cfg в Desired (hot-reload туннелей учтён).
 	adapters := []adapter.Reconcilable{
 		adapter.NewSysctlAdapter(nil),
 		adapter.NewWireGuardAdapter(),
 		adapter.NewIPRouteAdapter(),
 		adapter.NewIPRuleAdapter(100, 199),
 		adapter.NewNFTablesAdapter("smartroute"),
-		adapter.NewTCAdapter(managedIfaces),
+		adapter.NewTCAdapter(nil),
 	}
 	rec := engine.NewReconciler(adapters, 500*time.Millisecond)
 	rec.SetErrorLog(func(adapterName, phase string, err error) {
@@ -85,6 +82,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	go rec.Run(ctx)  // reconciler в отдельной горутине (async)
 	go eng.Run(ctx)
 
 	// SIGHUP debounce: coalesce 500ms после последнего SIGHUP
@@ -120,6 +118,12 @@ func runRun(cmd *cobra.Command, args []string) error {
 				bus.Send(domain.Event{Type: domain.EventConfigRejected, Timestamp: time.Now(), Severity: domain.SeverityWarning, Message: "invalid config on reload"})
 				continue
 			}
+			if err := newCfg.Validate(); err != nil {
+				reloadMu.Unlock()
+				ml.Write("error", "reload validate: "+err.Error())
+				bus.Send(domain.Event{Type: domain.EventConfigRejected, Timestamp: time.Now(), Severity: domain.SeverityWarning, Message: "config validation failed: " + err.Error()})
+				continue
+			}
 			if newCfg.ClientSubnet != cfg.ClientSubnet {
 				reloadMu.Unlock()
 				ml.Write("error", "reload: client_subnet immutable")
@@ -131,6 +135,11 @@ func runRun(cmd *cobra.Command, args []string) error {
 			cfgPtr = cfg
 			cfgMu.Unlock()
 			atomic.AddUint64(&configGeneration, 1)
+			engine.RefreshCapabilitiesFromConfig(newCfg)
+			// Обновляем TickInterval в engine при hot-reload
+			if newCfg.TickIntervalMs > 0 {
+				eng.TickInterval = time.Duration(newCfg.TickIntervalMs) * time.Millisecond
+			}
 			reloadMu.Unlock()
 			bus.Send(domain.Event{Type: domain.EventConfigReloaded, Timestamp: time.Now(), Severity: domain.SeverityInfo, Message: "config reloaded"})
 			ml.Write("info", "config reloaded")

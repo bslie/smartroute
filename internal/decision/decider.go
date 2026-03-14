@@ -3,7 +3,7 @@ package decision
 import (
 	"time"
 
-	"github.com/smartroute/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/domain"
 )
 
 // Decider применяет policy stack и возвращает Assignment. Чистая логика.
@@ -52,7 +52,7 @@ func (d *Decider) Decide(
 	cr := d.Classifier.Classify(dest.IP.String(), dest.Domain, dest.Port)
 	if cr.StaticTunnel != "" && cr.Confidence >= 1.0 {
 		for _, t := range d.Tunnels {
-			if t.Name == cr.StaticTunnel {
+			if t.Name == cr.StaticTunnel && !t.Disabled {
 				return &domain.Assignment{
 					DestIP: dest.IP, TunnelName: cr.StaticTunnel, Reason: domain.ReasonStaticOverride,
 					PolicyLevel: domain.PolicyLevelStaticOverride, CreatedAt: time.Now(), Generation: 1,

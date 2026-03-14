@@ -6,10 +6,10 @@ import (
 	"os"
 	"time"
 
-	"github.com/smartroute/smartroute/internal/decision"
-	"github.com/smartroute/smartroute/internal/domain"
-	"github.com/smartroute/smartroute/internal/engine"
-	"github.com/smartroute/smartroute/internal/store"
+	"github.com/bslie/smartroute/internal/decision"
+	"github.com/bslie/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/engine"
+	"github.com/bslie/smartroute/internal/store"
 	"github.com/spf13/cobra"
 )
 
@@ -74,11 +74,14 @@ func runExplain(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "destination not found: %s\n", key)
 		os.Exit(1)
 	}
+	now := time.Now()
 	profile := ""
+	var snapshotAt time.Time
 	if stateSnap, err := engine.ReadStateFile(explainStateFile); err == nil {
 		profile = stateSnap.ActiveProfile
+		snapshotAt = stateSnap.At
 	}
-	snap := decision.BuildSnapshot(d, time.Now(), profile)
+	snap := decision.BuildSnapshot(d, now, profile, snapshotAt)
 	if explainJSON {
 		out, _ := decision.FormatExplainJSON(snap)
 		fmt.Println(string(out))

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/smartroute/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/domain"
 )
 
 // ExplainSnapshot — стабильный снимок для explain (text/JSON).
@@ -69,8 +69,23 @@ func FormatExplainJSON(s *ExplainSnapshot) ([]byte, error) {
 	return json.MarshalIndent(s, "", "  ")
 }
 
-// BuildSnapshot строит ExplainSnapshot из destination и assignment. activeProfile — текущий профиль (default/game).
-func BuildSnapshot(d *domain.Destination, now time.Time, activeProfile string) *ExplainSnapshot {
+// StalenessFreshThreshold — порог возраста снимка (старше = показываем "stale: observed may differ").
+const StalenessFreshThreshold = 5 * time.Second
+
+// BuildSnapshot строит ExplainSnapshot из destination и assignment.
+// activeProfile — текущий профиль (default/game).
+// snapshotAt — время снимка state (например StateSnapshot.At); если не нулевое, по возрасту выставляется Staleness.
+func BuildSnapshot(d *domain.Destination, now time.Time, activeProfile string, snapshotAt time.Time) *ExplainSnapshot {
+	staleness := "observed 0s ago (fresh)"
+	if !snapshotAt.IsZero() {
+		age := now.Sub(snapshotAt)
+		sec := int(age.Round(time.Second).Seconds())
+		if age > StalenessFreshThreshold {
+			staleness = fmt.Sprintf("stale: observed may differ (snapshot %ds old)", sec)
+		} else {
+			staleness = fmt.Sprintf("observed %ds ago (fresh)", sec)
+		}
+	}
 	s := &ExplainSnapshot{
 		IP:           d.IP.String(),
 		Destination:  d.Domain,
@@ -78,7 +93,7 @@ func BuildSnapshot(d *domain.Destination, now time.Time, activeProfile string) *
 		TrafficClass:  string(d.Class),
 		ClassConf:     d.DomainConf,
 		ClassSource:   "store",
-		Staleness:     "observed 0s ago (fresh)",
+		Staleness:     staleness,
 		Profile:       activeProfile,
 	}
 	if d.Domain == "" {

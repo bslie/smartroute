@@ -4,7 +4,7 @@ import (
 	"net"
 	"sync"
 
-	"github.com/smartroute/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/domain"
 )
 
 // AssignmentStore — активные назначения (destination IP -> assignment).

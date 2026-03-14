@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/smartroute/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/domain"
 )
 
 func TestBus_SendAndLast(t *testing.T) {

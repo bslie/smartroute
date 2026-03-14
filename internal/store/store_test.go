@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/smartroute/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/domain"
 )
 
 func TestTunnelStore(t *testing.T) {

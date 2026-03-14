@@ -1,4 +1,7 @@
-# SmartRoute — сборка и тесты
+# SmartRoute — сборка и тесты (целевая ОС: Linux)
+#
+# Сборка в WSL: cd /mnt/w/projects/smartroute && make build
+# Кросс-сборка с Windows (через WSL): wsl make -C /mnt/w/projects/smartroute build-linux
 
 VERSION ?= 0.1.0
 BINARY  := smartroute
@@ -12,10 +15,15 @@ ifneq (,$(wildcard .go/bin/go))
 endif
 GO ?= go
 
-.PHONY: build test test-integration bench clean install
+.PHONY: build build-linux test test-integration bench clean install
 
+# Обычная сборка (на Linux/WSL — нативный бинарник под Linux)
 build:
 	CGO_ENABLED=0 $(GO) build -ldflags="$(LDFLAGS)" -o $(BINARY) ./cmd/smartroute
+
+# Явная сборка под Linux (удобно при запуске make из Windows через WSL)
+build-linux:
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build -ldflags="$(LDFLAGS)" -o $(BINARY) ./cmd/smartroute
 
 build-upx: build
 	upx --best $(BINARY) 2>/dev/null || true
