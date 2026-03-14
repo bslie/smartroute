@@ -12,8 +12,12 @@ type PassiveStats struct {
 	Interface string
 	RXBytes   uint64
 	TXBytes   uint64
+	RXPackets uint64
+	TXPackets uint64
 	RXErrors  uint64
 	TXErrors  uint64
+	RXDrop    uint64
+	TXDrop    uint64
 	At        time.Time
 }
 
@@ -43,11 +47,15 @@ func ReadProcNetDev(iface string) (PassiveStats, error) {
 		fields := strings.Fields(parts[1])
 		if len(fields) >= 4 {
 			s.RXBytes, _ = strconv.ParseUint(fields[0], 10, 64)
+			s.RXPackets, _ = strconv.ParseUint(fields[1], 10, 64)
 			s.RXErrors, _ = strconv.ParseUint(fields[2], 10, 64)
+			s.RXDrop, _ = strconv.ParseUint(fields[3], 10, 64)
 		}
-		if len(fields) >= 8 {
+		if len(fields) >= 12 {
 			s.TXBytes, _ = strconv.ParseUint(fields[8], 10, 64)
+			s.TXPackets, _ = strconv.ParseUint(fields[9], 10, 64)
 			s.TXErrors, _ = strconv.ParseUint(fields[10], 10, 64)
+			s.TXDrop, _ = strconv.ParseUint(fields[11], 10, 64)
 		}
 		break
 	}
