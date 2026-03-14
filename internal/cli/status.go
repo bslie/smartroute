@@ -31,8 +31,8 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	snap, err := engine.ReadStateFile(statusStateFile)
 	if err == nil {
 		fmt.Println("SmartRoute status (from daemon state)")
-		fmt.Println("  Config generation:", snap.Generation)
-		fmt.Println("  Applied generation:", snap.Applied)
+		fmt.Println("  Config generation:", snap.ConfigGeneration)
+		fmt.Println("  Applied generation:", snap.AppliedConfigGen)
 		fmt.Println("  Active profile:", snap.ActiveProfile)
 		fmt.Println("  Tunnels:", len(snap.TunnelNames), snap.TunnelNames)
 		fmt.Println("  Destinations:", snap.DestCount)

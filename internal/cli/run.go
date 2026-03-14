@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -71,8 +72,9 @@ func runRun(cmd *cobra.Command, args []string) error {
 	})
 
 	var cfgMu sync.RWMutex
+	var configGeneration uint64 = 1
 	cfgPtr := cfg
-	eng := engine.New(st, bus, ml, rec, &cfgMu, &cfgPtr)
+	eng := engine.New(st, bus, ml, rec, &cfgMu, &cfgPtr, &configGeneration)
 	eng.TickInterval = time.Duration(cfg.TickIntervalMs) * time.Millisecond
 	eng.StateFile = runStateFile
 	eng.GameModeFile = "/var/run/smartroute/game_mode"
@@ -86,6 +88,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 	go eng.Run(ctx)
 
 	// SIGHUP debounce: coalesce 500ms после последнего SIGHUP
+	var reloadMu sync.Mutex
 	reloadTimer := time.NewTimer(0)
 	if !reloadTimer.Stop() {
 		<-reloadTimer.C
@@ -100,22 +103,25 @@ func runRun(cmd *cobra.Command, args []string) error {
 				return nil
 			}
 			if sig == syscall.SIGHUP {
-				// Coalesce: перезапуск таймера 500ms
 				reloadTimer.Reset(500 * time.Millisecond)
 			}
 		case <-reloadTimer.C:
+			reloadMu.Lock()
 			data2, err := os.ReadFile(runConfigPath)
 			if err != nil {
+				reloadMu.Unlock()
 				ml.Write("error", "reload: "+err.Error())
 				continue
 			}
 			newCfg := domain.DefaultConfig()
 			if err := yaml.Unmarshal(data2, newCfg); err != nil {
+				reloadMu.Unlock()
 				ml.Write("error", "reload yaml: "+err.Error())
 				bus.Send(domain.Event{Type: domain.EventConfigRejected, Timestamp: time.Now(), Severity: domain.SeverityWarning, Message: "invalid config on reload"})
 				continue
 			}
 			if newCfg.ClientSubnet != cfg.ClientSubnet {
+				reloadMu.Unlock()
 				ml.Write("error", "reload: client_subnet immutable")
 				bus.Send(domain.Event{Type: domain.EventConfigRejected, Timestamp: time.Now(), Severity: domain.SeverityWarning, Message: "client_subnet immutable"})
 				continue
@@ -124,6 +130,8 @@ func runRun(cmd *cobra.Command, args []string) error {
 			cfg = newCfg
 			cfgPtr = cfg
 			cfgMu.Unlock()
+			atomic.AddUint64(&configGeneration, 1)
+			reloadMu.Unlock()
 			bus.Send(domain.Event{Type: domain.EventConfigReloaded, Timestamp: time.Now(), Severity: domain.SeverityInfo, Message: "config reloaded"})
 			ml.Write("info", "config reloaded")
 		}

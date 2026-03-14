@@ -15,6 +15,7 @@ func init() {
 	RootCmd.AddCommand(runCmd)
 	RootCmd.AddCommand(statusCmd)
 	RootCmd.AddCommand(tunnelCmd)
+	RootCmd.AddCommand(userCmd)
 	RootCmd.AddCommand(explainCmd)
 	RootCmd.AddCommand(eventsCmd)
 	RootCmd.AddCommand(dumpCmd)
