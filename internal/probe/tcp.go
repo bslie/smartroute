@@ -3,10 +3,9 @@ package probe
 import (
 	"fmt"
 	"net"
-	"syscall"
 	"time"
 
-	"github.com/smartroute/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/domain"
 )
 
 // TCPProbe выполняет TCP connect через указанный сетевой интерфейс (iface).
@@ -65,19 +64,5 @@ func TCPProbeIface(host, iface string, port uint16, timeout time.Duration) domai
 		ErrorClass: domain.ErrorNone,
 		Confidence: conf,
 		Timestamp:  time.Now(),
-	}
-}
-
-// bindToDevice возвращает Control func для net.Dialer, устанавливающую SO_BINDTODEVICE.
-func bindToDevice(iface string) func(network, address string, c syscall.RawConn) error {
-	return func(network, address string, c syscall.RawConn) error {
-		var setSockOptErr error
-		err := c.Control(func(fd uintptr) {
-			setSockOptErr = syscall.SetsockoptString(int(fd), syscall.SOL_SOCKET, syscall.SO_BINDTODEVICE, iface)
-		})
-		if err != nil {
-			return err
-		}
-		return setSockOptErr
 	}
 }

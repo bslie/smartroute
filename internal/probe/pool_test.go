@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/smartroute/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/domain"
 )
 
 func TestPool_SubmitAndResult(t *testing.T) {

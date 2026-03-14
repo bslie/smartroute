@@ -5,10 +5,9 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"syscall"
 	"time"
 
-	"github.com/smartroute/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/domain"
 )
 
 // HTTPProbeIface выполняет HTTP GET через интерфейс (SO_BINDTODEVICE) и возвращает RTT + StatusCode/ErrorClass.
@@ -75,15 +74,5 @@ func HTTPProbeIface(host, iface string, port uint16, timeout time.Duration) doma
 		ErrorClass: errClass,
 		Confidence: conf,
 		Timestamp:  time.Now(),
-	}
-}
-
-func bindToDevice(iface string) func(network, address string, c syscall.RawConn) error {
-	return func(network, address string, c syscall.RawConn) error {
-		var setErr error
-		_ = c.Control(func(fd uintptr) {
-			setErr = syscall.SetsockoptString(int(fd), syscall.SOL_SOCKET, syscall.SO_BINDTODEVICE, iface)
-		})
-		return setErr
 	}
 }

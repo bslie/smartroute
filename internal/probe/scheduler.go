@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/smartroute/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/domain"
 )
 
 // Scheduler — бюджет и rate limit проб. Решает, какие пробы запускать в тике.

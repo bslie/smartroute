@@ -1,6 +1,7 @@
 package probe
 
 import (
+	"context"
 	"net"
 	"os/exec"
 	"regexp"
@@ -8,12 +9,32 @@ import (
 	"strings"
 	"time"
 
-	"github.com/smartroute/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/domain"
 )
 
-var icmpTimeRe = regexp.MustCompile(`time[=<>](\d+(?:\.\d+)?)\s*ms`)
+// Варианты вывода ping для RTT (разные локали и версии: time=1.2 ms, time<1 ms, 1.2 ms, Round-trip 1.2/1.2 ms).
+var (
+	icmpTimeEqRe = regexp.MustCompile(`time[=<>](\d+(?:\.\d+)?)\s*ms`)
+	icmpRttRe   = regexp.MustCompile(`(\d+(?:\.\d+)?)\s*ms`)
+)
 
-// ICMPProbeIface выполняет ping через интерфейс (-I iface) и возвращает RTT.
+// parsePingRTTMs извлекает RTT в миллисекундах из вывода ping (устойчиво к локали).
+func parsePingRTTMs(out string) float64 {
+	if m := icmpTimeEqRe.FindStringSubmatch(out); len(m) == 2 {
+		if v, err := strconv.ParseFloat(m[1], 64); err == nil {
+			return v
+		}
+	}
+	// Fallback: первое число перед "ms" (типично RTT в строке time=... или round-trip).
+	if m := icmpRttRe.FindStringSubmatch(out); len(m) == 2 {
+		if v, err := strconv.ParseFloat(m[1], 64); err == nil {
+			return v
+		}
+	}
+	return 0
+}
+
+// ICMPProbeIface выполняет ping через интерфейс (-I iface) с таймаутом процесса и возвращает RTT.
 func ICMPProbeIface(host, iface string, timeout time.Duration) domain.ProbeResult {
 	start := time.Now()
 	timeoutSec := int(timeout.Seconds())
@@ -25,12 +46,16 @@ func ICMPProbeIface(host, iface string, timeout time.Duration) domain.ProbeResul
 		args = append(args, "-I", iface)
 	}
 	args = append(args, host)
-	cmd := exec.Command("ping", args...)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout+time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "ping", args...)
 	out, err := cmd.CombinedOutput()
 	latencyMs := int(time.Since(start).Milliseconds())
 	if err != nil {
 		errClass := domain.ErrorTimeout
-		if strings.Contains(string(out), "Network is unreachable") || strings.Contains(string(out), "100% packet loss") {
+		if ctx.Err() == context.DeadlineExceeded || strings.Contains(err.Error(), "deadline") {
+			errClass = domain.ErrorTimeout
+		} else if strings.Contains(string(out), "Network is unreachable") || strings.Contains(string(out), "100% packet loss") {
 			errClass = domain.ErrorUnknown
 		}
 		return domain.ProbeResult{
@@ -42,10 +67,7 @@ func ICMPProbeIface(host, iface string, timeout time.Duration) domain.ProbeResul
 			Timestamp:  time.Now(),
 		}
 	}
-	ms := 0.0
-	if m := icmpTimeRe.FindStringSubmatch(string(out)); len(m) == 2 {
-		ms, _ = strconv.ParseFloat(m[1], 64)
-	}
+	ms := parsePingRTTMs(string(out))
 	latencyMs = int(ms)
 	if latencyMs <= 0 {
 		latencyMs = int(time.Since(start).Milliseconds())

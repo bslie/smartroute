@@ -1,10 +1,9 @@
 package probe
 
 import (
-	"net"
 	"time"
 
-	"github.com/smartroute/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/domain"
 )
 
 // RunProbe выполняет пробу по типу задания (TCP, HTTP, ICMP).

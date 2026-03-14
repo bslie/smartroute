@@ -4,7 +4,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/smartroute/smartroute/internal/domain"
+	"github.com/bslie/smartroute/internal/domain"
 )
 
 // Result — результат пробы (alias для domain.ProbeResult).
