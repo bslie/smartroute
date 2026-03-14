@@ -3,7 +3,6 @@ package decision
 import (
 	"net"
 	"testing"
-	"time"
 
 	"github.com/smartroute/smartroute/internal/domain"
 )

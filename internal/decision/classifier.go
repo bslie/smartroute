@@ -42,10 +42,10 @@ type Classifier struct {
 }
 
 // Classify возвращает class и confidence для IP/domain/port.
-func (c *Classifier) Classify(ip string, domain string, port uint16) ClassifyResult {
+func (c *Classifier) Classify(ip string, domainStr string, port uint16) ClassifyResult {
 	// 1) Static: domain/CIDR -> tunnel + optional class
 	for _, r := range c.StaticRoutes {
-		if r.Domain != "" && r.Domain == domain {
+		if r.Domain != "" && r.Domain == domainStr {
 			class := domain.TrafficClassWeb
 			if r.TrafficClass != "" {
 				class = domain.TrafficClass(r.TrafficClass)
@@ -83,7 +83,7 @@ func (c *Classifier) Classify(ip string, domain string, port uint16) ClassifyRes
 		}
 	}
 	// 2) Domain from DNS
-	if domain != "" {
+	if domainStr != "" {
 		return ClassifyResult{Class: domain.TrafficClassWeb, Confidence: ConfidenceDNS, Source: SourceDNSLog}
 	}
 	// 3) Port heuristic — class only
