@@ -1,4 +1,4 @@
-module github.com/smartroute/smartroute
+module github.com/bslie/smartroute
 
 go 1.21
 
