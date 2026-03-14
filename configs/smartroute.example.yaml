@@ -1,0 +1,50 @@
+# SmartRoute — пример конфигурации
+# Копировать в /etc/smartroute/config.yaml
+
+tick_interval_ms: 2000
+min_reconcile_interval: 500ms
+client_subnet: "10.0.0.0/24"   # immutable, не менять при reload
+
+tunnels:
+  - name: ams
+    endpoint: 1.2.3.4:51820
+    private_key_file: /etc/smartroute/keys/ams.key
+    route_table: 201
+    fwmark: 1
+    is_default: true
+  - name: msk
+    endpoint: 5.6.7.8:51820
+    private_key_file: /etc/smartroute/keys/msk.key
+    route_table: 202
+    fwmark: 2
+
+static_routes:
+  - domain: chat.openai.com
+    tunnel: ams
+    traffic_class: web
+  - cidr: 192.168.1.0/24
+    tunnel: msk
+
+probe:
+  max_probes_per_tick: 50
+  max_probes_per_destination_per_minute: 6
+  signal_ttl: 120s
+  http_check: false
+  timeout: 5s
+
+game_mode:
+  enabled: false
+  udp_sticky: true
+
+qos:
+  mode: htb
+  cake_rtt_ms: 50
+
+shutdown_cleanup: full   # full | preserve | rules-only
+dest_ttl: 120s
+tunnel_quarantine_cooldown_sec: 60
+sticky_cycles: 5
+hysteresis_web_pct: 15
+hysteresis_bulk_pct: 25
+hysteresis_game_pct: 5
+sticky_bonus: 50

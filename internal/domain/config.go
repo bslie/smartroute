@@ -1,0 +1,112 @@
+package domain
+
+import (
+	"net"
+	"time"
+)
+
+// TunnelConfig — конфиг одного туннеля.
+type TunnelConfig struct {
+	Name           string `yaml:"name"`
+	Endpoint       string `yaml:"endpoint"`
+	PrivateKeyFile string `yaml:"private_key_file"`
+	RouteTable     int    `yaml:"route_table,omitempty"`
+	FWMark         uint32 `yaml:"fwmark,omitempty"`
+	IsDefault      bool   `yaml:"is_default,omitempty"`
+}
+
+// StaticRoute — статическое правило domain/CIDR -> tunnel.
+type StaticRoute struct {
+	Domain   string `yaml:"domain,omitempty"`
+	CIDR     string `yaml:"cidr,omitempty"`
+	IP       string `yaml:"ip,omitempty"`
+	Tunnel   string `yaml:"tunnel"`
+	TrafficClass string `yaml:"traffic_class,omitempty"`
+}
+
+// ProbeConfig — настройки проб.
+type ProbeConfig struct {
+	MaxProbesPerTick              int           `yaml:"max_probes_per_tick,omitempty"`
+	MaxProbesPerDestinationPerMin int           `yaml:"max_probes_per_destination_per_minute,omitempty"`
+	SignalTTL                     time.Duration `yaml:"signal_ttl,omitempty"`
+	HTTPCheck                     bool          `yaml:"http_check,omitempty"`
+	Timeout                       time.Duration `yaml:"timeout,omitempty"`
+}
+
+// GameModeConfig — game mode.
+type GameModeConfig struct {
+	Enabled    bool `yaml:"enabled,omitempty"`
+	UDPSticky  bool `yaml:"udp_sticky,omitempty"`
+}
+
+// QoSConfig — QoS (cake/htb).
+type QoSConfig struct {
+	Mode   string `yaml:"mode,omitempty"` // "cake" | "htb"
+	CakeRTTMs int `yaml:"cake_rtt_ms,omitempty"`
+}
+
+// Config — полная конфигурация.
+type Config struct {
+	TickIntervalMs       int           `yaml:"tick_interval_ms,omitempty"`
+	MinReconcileInterval time.Duration `yaml:"min_reconcile_interval,omitempty"`
+	ClientSubnet        string        `yaml:"client_subnet"` // immutable
+	Tunnels             []TunnelConfig `yaml:"tunnels"`
+	StaticRoutes        []StaticRoute  `yaml:"static_routes,omitempty"`
+	Probe               ProbeConfig   `yaml:"probe,omitempty"`
+	GameMode            GameModeConfig `yaml:"game_mode,omitempty"`
+	QoS                 QoSConfig     `yaml:"qos,omitempty"`
+	ShutdownCleanup     string        `yaml:"shutdown_cleanup,omitempty"` // full | preserve | rules-only
+	DestTTL             time.Duration `yaml:"dest_ttl,omitempty"`
+	TunnelQuarantineCooldownSec int   `yaml:"tunnel_quarantine_cooldown_sec,omitempty"`
+	StickyCycles        int           `yaml:"sticky_cycles,omitempty"`
+	HysteresisWebPct    int           `yaml:"hysteresis_web_pct,omitempty"`
+	HysteresisBulkPct   int           `yaml:"hysteresis_bulk_pct,omitempty"`
+	HysteresisGamePct   int           `yaml:"hysteresis_game_pct,omitempty"`
+	StickyBonus         int           `yaml:"sticky_bonus,omitempty"`
+}
+
+// ConfigState — состояние конфига с generation.
+type ConfigState struct {
+	Current    *Config
+	Generation uint64
+	Applied    uint64
+	LoadedAt   time.Time
+	AppliedAt  time.Time
+	Previous   *Config
+}
+
+// DefaultConfig возвращает конфиг с дефолтами.
+func DefaultConfig() *Config {
+	return &Config{
+		TickIntervalMs:       2000,
+		MinReconcileInterval: 500 * time.Millisecond,
+		Probe: ProbeConfig{
+			MaxProbesPerTick:              50,
+			MaxProbesPerDestinationPerMin: 6,
+			SignalTTL:                     120 * time.Second,
+			Timeout:                       5 * time.Second,
+		},
+		DestTTL:                      120 * time.Second,
+		TunnelQuarantineCooldownSec:  60,
+		StickyCycles:                 5,
+		HysteresisWebPct:             15,
+		HysteresisBulkPct:            25,
+		HysteresisGamePct:            5,
+		StickyBonus:                 50,
+		ShutdownCleanup:              "full",
+	}
+}
+
+// Validate проверяет конфиг (базовая валидация).
+func (c *Config) Validate() error {
+	if c.ClientSubnet == "" {
+		return ErrInvalidConfig
+	}
+	if _, _, err := net.ParseCIDR(c.ClientSubnet); err != nil {
+		return ErrInvalidConfig
+	}
+	if len(c.Tunnels) == 0 {
+		return ErrNoTunnels
+	}
+	return nil
+}

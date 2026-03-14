@@ -1,0 +1,30 @@
+# Binary
+smartroute
+*.exe
+
+# Go
+/vendor/
+*.test
+*.out
+coverage.html
+coverage.txt
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local config and state (не коммитить ключи и локальные настройки)
+*.key
+config.yaml
+!configs/smartroute.example.yaml
+/var/
+
+# Build
+/dist/
