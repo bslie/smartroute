@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/bslie/smartroute/internal/domain"
 	"github.com/bslie/smartroute/internal/engine"
@@ -174,10 +175,11 @@ func generateVPSScript(name, clientPubkey, clientSubnet, listenPort string) stri
 
 set -e
 WG_NAME="wg0"
+TUNNEL_NAME="%s"
 LISTEN_PORT="%s"
 CLIENT_PUBKEY="%s"
 CLIENT_SUBNET="%s"
-`, name, name, name, listenPort, clientPubkey, clientSubnet)
+`, name, name, name, name, listenPort, clientPubkey, clientSubnet)
 
 	body := `
 if command -v wg >/dev/null 2>&1 && ip link show "$WG_NAME" >/dev/null 2>&1; then
@@ -239,7 +241,7 @@ echo "[OK] WireGuard на VPS настроен."
 echo "Публичный ключ сервера (скопируйте в smartroute tunnel set-peer):"
 wg show "$WG_NAME" public-key
 echo ""
-echo "Команда для клиента: smartroute tunnel set-peer $WG_NAME $(wg show "$WG_NAME" public-key)"
+echo "Команда для клиента: smartroute tunnel set-peer $TUNNEL_NAME $(wg show "$WG_NAME" public-key)"
 `
 	return hdr + body
 }
@@ -276,8 +278,8 @@ func runTunnelAdd(cmd *cobra.Command, args []string) error {
 		Name:           name,
 		Endpoint:       endpoint,
 		PrivateKeyFile: privateKeyPath,
-		RouteTable:     200 + idx + 1, // 201, 202, ...
-		FWMark:         uint32(idx + 1),  // 1, 2, ...
+		RouteTable:     200 + idx + 1,   // 201, 202, ...
+		FWMark:         uint32(idx + 1), // 1, 2, ...
 	})
 	if err := saveConfig(tunnelConfigPath, cfg); err != nil {
 		return err
@@ -310,7 +312,19 @@ func runTunnelSetPeer(cmd *cobra.Command, args []string) error {
 	for i := range cfg.Tunnels {
 		if cfg.Tunnels[i].Name == name {
 			cfg.Tunnels[i].PeerPublicKey = pubkey
-			return saveConfig(tunnelConfigPath, cfg)
+			if err := saveConfig(tunnelConfigPath, cfg); err != nil {
+				return err
+			}
+			if err := applyTunnelNow(cfg.Tunnels[i], i); err != nil {
+				return fmt.Errorf("ключ сохранён, но автоматическое применение туннеля не удалось: %w", err)
+			}
+			if waitTunnelHandshake("wg-"+name, 25*time.Second) {
+				fmt.Printf("[OK] peer_public_key применён, туннель %q поднят и handshake успешен.\n", name)
+				return nil
+			}
+			fmt.Printf("[!] peer_public_key применён для %q, но handshake пока не получен.\n", name)
+			fmt.Println("Проверьте доступность endpoint, firewall/UDP-порт и запущенный WireGuard на удалённой VPS.")
+			return nil
 		}
 	}
 	return fmt.Errorf("туннель %q не найден", name)
