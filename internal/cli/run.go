@@ -68,6 +68,37 @@ func findInstallWireGuardScript() string {
 	return ""
 }
 
+// loadOrCreateConfig читает конфиг по пути; если файла нет — создаёт каталог и записывает минимальный конфиг.
+func loadOrCreateConfig(path string) (*domain.Config, error) {
+	data, err := os.ReadFile(path)
+	if err == nil {
+		cfg := domain.DefaultConfig()
+		if err := yaml.Unmarshal(data, cfg); err != nil {
+			return nil, fmt.Errorf("config yaml: %w", err)
+		}
+		return cfg, nil
+	}
+	if !os.IsNotExist(err) {
+		return nil, fmt.Errorf("config: %w", err)
+	}
+	// Файла нет — создаём минимальный конфиг для работы из коробки.
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return nil, fmt.Errorf("create config dir: %w", err)
+	}
+	cfg := domain.DefaultConfig()
+	cfg.ClientSubnet = "10.0.0.0/24"
+	cfg.Tunnels = nil
+	data, err = yaml.Marshal(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("marshal default config: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return nil, fmt.Errorf("write config: %w", err)
+	}
+	fmt.Fprintf(os.Stderr, "[*] Создан конфиг по умолчанию: %s\n", path)
+	return cfg, nil
+}
+
 // ensureWireGuard проверяет наличие wg; при отсутствии запускает скрипт установки.
 func ensureWireGuard() error {
 	engine.RefreshCapabilities()
@@ -93,13 +124,9 @@ func ensureWireGuard() error {
 }
 
 func runRun(cmd *cobra.Command, args []string) error {
-	data, err := os.ReadFile(runConfigPath)
+	cfg, err := loadOrCreateConfig(runConfigPath)
 	if err != nil {
-		return fmt.Errorf("config: %w", err)
-	}
-	cfg := domain.DefaultConfig()
-	if err := yaml.Unmarshal(data, cfg); err != nil {
-		return fmt.Errorf("yaml: %w", err)
+		return err
 	}
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("validate: %w", err)
