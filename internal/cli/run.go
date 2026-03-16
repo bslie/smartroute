@@ -105,10 +105,20 @@ func runRun(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("validate: %w", err)
 	}
 
-	// Проверка WireGuard: при отсутствии — попытка установки (невидимо для пользователя).
-	if len(cfg.Tunnels) > 0 {
+	// Проверка WireGuard: при отсутствии — попытка установки.
+	if len(cfg.Tunnels) > 0 || cfg.WireGuardServer != nil {
 		if err := ensureWireGuard(); err != nil {
 			return err
+		}
+	}
+	// Полная подготовка WG-сервера (wg0 и peers) перед стартом engine.
+	if cfg.WireGuardServer != nil {
+		if _, _, changed, err := ensureWGServer(cfg, runConfigPath); err != nil {
+			return fmt.Errorf("wireguard_server apply: %w", err)
+		} else if changed {
+			if err := saveConfig(runConfigPath, cfg); err != nil {
+				return fmt.Errorf("wireguard_server save config: %w", err)
+			}
 		}
 	}
 
@@ -145,7 +155,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go rec.Run(ctx)  // reconciler в отдельной горутине (async)
+	go rec.Run(ctx) // reconciler в отдельной горутине (async)
 	go eng.Run(ctx)
 
 	// SIGHUP debounce: coalesce 500ms после последнего SIGHUP
