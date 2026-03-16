@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/bslie/smartroute/internal/domain"
-	"github.com/bslie/smartroute/internal/engine"
 	"github.com/spf13/cobra"
 )
 
@@ -90,15 +89,6 @@ func runUserList(cmd *cobra.Command, args []string) error {
 		fmt.Printf("%s\t%s\t%s\n", p.Name, p.AllowedIPs, pubShort)
 	}
 	return nil
-}
-
-// serverPublicKey получает публичный ключ серверного интерфейса через wg show.
-func serverPublicKey(iface string) string {
-	out, err := exec.Command("wg", "show", iface, "public-key").Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
 }
 
 // serverEndpoint пытается определить внешний IP сервера (для показа в клиентском конфиге).
@@ -199,12 +189,13 @@ func runUserAdd(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("не заданы allowed_ips и не удалось выдать из peers_subnet: %w", err)
 		}
 	}
-
-	// Проверяем WG
-	engine.RefreshCapabilities()
-	if !engine.HasWireGuard() {
-		if err := ensureWireGuard(); err != nil {
-			return fmt.Errorf("для добавления пользователя нужен WireGuard: %w", err)
+	serverPub, serverEP, changed, err := ensureWGServer(cfg, userConfigPath)
+	if err != nil {
+		return fmt.Errorf("не удалось подготовить wireguard_server: %w", err)
+	}
+	if changed {
+		if err := saveConfig(userConfigPath, cfg); err != nil {
+			return err
 		}
 	}
 
@@ -219,23 +210,17 @@ func runUserAdd(cmd *cobra.Command, args []string) error {
 	if err := saveConfig(userConfigPath, cfg); err != nil {
 		return err
 	}
-
-	// Применяем peer на интерфейс (best-effort: сервер может не быть запущен)
-	if wgErr := wgSetPeer(ws.Interface, pubKey, allowedIPs); wgErr != nil {
-		fmt.Fprintf(os.Stderr, "[!] Сохранено в конфиг, но wg set не выполнен (%v). Перезапустите smartroute run.\n", wgErr)
-	}
-
-	// Определяем данные сервера для клиентского конфига
-	srvPub := serverPublicKey(ws.Interface)
-	listenPort := "51820"
-	if out, err := exec.Command("wg", "show", ws.Interface, "listen-port").Output(); err == nil {
-		if p := strings.TrimSpace(string(out)); p != "" {
-			listenPort = p
+	serverPub, serverEP, changed, err = ensureWGServer(cfg, userConfigPath)
+	if changed {
+		if saveErr := saveConfig(userConfigPath, cfg); saveErr != nil {
+			return saveErr
 		}
 	}
-	srvEndpoint := serverEndpoint(listenPort)
+	if err != nil {
+		return fmt.Errorf("конфиг сохранён, но не удалось применить peer на сервере: %w", err)
+	}
 
-	clientCfg := buildClientConfig(privKey, allowedIPs, srvPub, srvEndpoint)
+	clientCfg := buildClientConfig(privKey, allowedIPs, serverPub, serverEP)
 
 	// Сохраняем клиентский конфиг рядом с ключом
 	cfgPath := filepath.Join(userKeysDir(), name+".conf")
@@ -248,9 +233,6 @@ func runUserAdd(cmd *cobra.Command, args []string) error {
 	fmt.Println(clientCfg)
 	fmt.Println("=== QR-код ===")
 	printQR(clientCfg)
-	if srvPub == "" {
-		fmt.Println("\n[!] Публичный ключ сервера не найден — интерфейс", ws.Interface, "ещё не поднят. Конфиг клиента будет верным после smartroute run.")
-	}
 	return nil
 }
 
@@ -282,9 +264,12 @@ func runUserRemove(cmd *cobra.Command, args []string) error {
 	if err := saveConfig(userConfigPath, cfg); err != nil {
 		return err
 	}
-
-	if err := wgRemovePeer(ws.Interface, pubKey); err != nil {
-		fmt.Fprintf(os.Stderr, "[!] Удалён из конфига, но wg set remove не выполнен: %v\n", err)
+	if _, _, changed, err := ensureWGServer(cfg, userConfigPath); err != nil {
+		return fmt.Errorf("пользователь удалён из конфига, но применить wireguard_server не удалось: %w", err)
+	} else if changed {
+		if err := saveConfig(userConfigPath, cfg); err != nil {
+			return err
+		}
 	}
 
 	// Удаляем файлы ключа и конфига
@@ -322,9 +307,12 @@ func runUserEdit(cmd *cobra.Command, args []string) error {
 	if err := saveConfig(userConfigPath, cfg); err != nil {
 		return err
 	}
-
-	if err := wgSetPeer(ws.Interface, pubKey, userEditAllowedIPs); err != nil {
-		fmt.Fprintf(os.Stderr, "[!] Конфиг обновлён, но wg set не выполнен: %v\n", err)
+	if _, _, changed, err := ensureWGServer(cfg, userConfigPath); err != nil {
+		return fmt.Errorf("конфиг обновлён, но применить wireguard_server не удалось: %w", err)
+	} else if changed {
+		if err := saveConfig(userConfigPath, cfg); err != nil {
+			return err
+		}
 	}
 	fmt.Printf("[OK] Пользователь %q обновлён: allowed_ips=%s\n", name, userEditAllowedIPs)
 	return nil
@@ -383,4 +371,3 @@ func wgRemovePeer(iface, publicKey string) error {
 	}
 	return nil
 }
-
