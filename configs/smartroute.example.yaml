@@ -21,6 +21,11 @@ tunnels:
 # Управление пользователями (peer'ами) WG-сервера: smartroute user add/remove/edit/list
 wireguard_server:
   interface: wg0
+  address: "10.100.0.1/24"                 # адрес интерфейса сервера
+  listen_port: 51820                       # порт сервера WireGuard
+  private_key_file: /etc/smartroute/keys/wg0_server.key
+  # public_endpoint: vpn.example.com:51820 # если пусто, определяется автоматически
+  # nat_interface: eth0                    # если пусто, определяется default route
   peers_subnet: "10.100.0.0/24"   # подсеть для автовыдачи IP при user add
   # peers добавляются через CLI (smartroute user add) или вручную:
   # peers:
