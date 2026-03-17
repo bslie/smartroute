@@ -83,8 +83,24 @@ func ensureWGServer(cfg *domain.Config, cfgPath string) (string, string, bool, e
 	_ = exec.Command("ip", "link", "set", "up", "dev", ws.Interface).Run()
 
 	body := buildWGServerSetconf(ws, privateKey)
-	setconf := exec.Command("wg", "setconf", ws.Interface, "-")
-	setconf.Stdin = strings.NewReader(body)
+	tmpFile, err := os.CreateTemp("", "smartroute-wg-server-*.conf")
+	if err != nil {
+		return "", "", changed, fmt.Errorf("create temp config: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath)
+	if _, err := tmpFile.WriteString(body); err != nil {
+		tmpFile.Close()
+		return "", "", changed, fmt.Errorf("write temp config: %w", err)
+	}
+	if err := tmpFile.Chmod(0600); err != nil {
+		tmpFile.Close()
+		return "", "", changed, fmt.Errorf("chmod temp config: %w", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		return "", "", changed, fmt.Errorf("close temp config: %w", err)
+	}
+	setconf := exec.Command("wg", "setconf", ws.Interface, tmpPath)
 	if out, setErr := setconf.CombinedOutput(); setErr != nil {
 		return "", "", changed, fmt.Errorf("wg setconf %s: %w: %s", ws.Interface, setErr, strings.TrimSpace(string(out)))
 	}
