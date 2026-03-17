@@ -168,14 +168,45 @@ PersistentKeepalive = 25
 `, privKey, allowedIPs, serverPubKey, serverEndpoint)
 }
 
-// printQR выводит QR-код конфига в терминал через qrencode (если доступен).
+// ensureQREncode устанавливает qrencode если он отсутствует.
+func ensureQREncode() error {
+	if err := exec.Command("qrencode", "--version").Run(); err == nil {
+		return nil
+	}
+	fmt.Fprintln(os.Stderr, "[*] Устанавливаю qrencode...")
+	if err := exec.Command("sh", "-c",
+		`if command -v apt-get >/dev/null 2>&1; then
+			apt-get install -y -qq qrencode
+		elif command -v dnf >/dev/null 2>&1; then
+			dnf install -y -q qrencode
+		elif command -v yum >/dev/null 2>&1; then
+			yum install -y -q qrencode
+		elif command -v apk >/dev/null 2>&1; then
+			apk add --no-cache libqrencode-tools
+		else
+			exit 1
+		fi`).Run(); err != nil {
+		return fmt.Errorf("не удалось установить qrencode: %w", err)
+	}
+	// Повторная проверка после установки
+	if err := exec.Command("qrencode", "--version").Run(); err != nil {
+		return fmt.Errorf("qrencode установлен, но команда недоступна")
+	}
+	return nil
+}
+
+// printQR выводит QR-код конфига в терминал; при необходимости ставит qrencode.
 func printQR(content string) {
+	if err := ensureQREncode(); err != nil {
+		fmt.Fprintf(os.Stderr, "[!] QR-код недоступен: %v\n", err)
+		return
+	}
 	cmd := exec.Command("qrencode", "-t", "UTF8", "-l", "L")
 	cmd.Stdin = bytes.NewBufferString(content)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		fmt.Println("[!] QR-код не показан: установите qrencode (apt install qrencode)")
+		fmt.Fprintf(os.Stderr, "[!] Ошибка генерации QR-кода: %v\n", err)
 	}
 }
 
