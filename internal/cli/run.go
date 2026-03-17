@@ -124,6 +124,11 @@ func ensureWireGuard() error {
 }
 
 func runRun(cmd *cobra.Command, args []string) error {
+	// Создаём рабочий каталог для state-файла и game_mode до любых операций.
+	if err := os.MkdirAll(filepath.Dir(runStateFile), 0755); err != nil {
+		return fmt.Errorf("create state dir: %w", err)
+	}
+
 	cfg, err := loadOrCreateConfig(runConfigPath)
 	if err != nil {
 		return err

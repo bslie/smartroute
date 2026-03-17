@@ -22,13 +22,13 @@ func init() {
 }
 
 func runLogs(cmd *cobra.Command, args []string) error {
-	// Memlog хранится только в памяти демона. Для получения логов извне нужен IPC или
-	// запись в файл. Читаем state-файл как подтверждение работы демона.
 	snap, err := engine.ReadStateFile(runStateFile)
 	if err != nil {
-		return fmt.Errorf("демон не запущен или state-файл недоступен: %w", err)
+		fmt.Println("SmartRoute: демон не запущен.")
+		fmt.Println("Запустите: smartroute run")
+		return nil
 	}
-	fmt.Printf("SmartRoute запущен (generation=%d, reconcile_cycles=%d, reconcile_errors=%d)\n",
+	fmt.Printf("SmartRoute: демон запущен (generation=%d, reconcile_cycles=%d, reconcile_errors=%d)\n",
 		snap.Generation, snap.ReconcileCycles, snap.ReconcileErrors)
 	fmt.Printf("Журнал работы (memlog) доступен только внутри процесса демона.\n")
 	return nil

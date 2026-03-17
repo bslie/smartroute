@@ -3,6 +3,7 @@ package engine
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -64,9 +65,13 @@ func BuildStateSnapshot(st *store.Store) StateSnapshot {
 }
 
 // WriteStateFileFromSnapshot записывает готовый снимок в файл (без доступа к store).
+// Автоматически создаёт каталог, если он не существует.
 func WriteStateFileFromSnapshot(snap *StateSnapshot, path string) error {
 	if path == "" {
 		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
 	}
 	data, err := json.Marshal(snap)
 	if err != nil {
