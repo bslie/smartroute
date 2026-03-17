@@ -141,8 +141,28 @@ func (a *WireGuardAdapter) Apply(diff Diff) error {
 		if !interfaceExists(cfg.Name) {
 			return fmt.Errorf("interface %s missing before wg setconf", cfg.Name)
 		}
-		cmd := exec.Command("wg", "setconf", cfg.Name, "-")
-		cmd.Stdin = bytes.NewReader(body)
+		// Передаём конфиг через временный файл: в фоне stdin может быть недоступен, из‑за чего wg setconf даёт "fopen: No such file or directory".
+		tmpDir := os.TempDir()
+		if tmpDir == "" {
+			tmpDir = "/tmp"
+		}
+		f, err := os.CreateTemp(tmpDir, "smartroute-wg-*.conf")
+		if err != nil {
+			return fmt.Errorf("wg setconf %s: temp file: %w", cfg.Name, err)
+		}
+		tmpPath := f.Name()
+		if _, err := f.Write(body); err != nil {
+			f.Close()
+			os.Remove(tmpPath)
+			return fmt.Errorf("wg setconf %s: write temp: %w", cfg.Name, err)
+		}
+		if err := f.Close(); err != nil {
+			os.Remove(tmpPath)
+			return fmt.Errorf("wg setconf %s: close temp: %w", cfg.Name, err)
+		}
+		_ = os.Chmod(tmpPath, 0600) // ключ в файле — только владелец
+		defer os.Remove(tmpPath)
+		cmd := exec.Command("wg", "setconf", cfg.Name, tmpPath)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("wg setconf %s: %w: %s", cfg.Name, err, out)
 		}
