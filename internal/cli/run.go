@@ -99,6 +99,64 @@ func loadOrCreateConfig(path string) (*domain.Config, error) {
 	return cfg, nil
 }
 
+// ensureRequiredPackages проверяет conntrack, nftables, tc и при отсутствии устанавливает пакеты.
+func ensureRequiredPackages() error {
+	conntrackOk := exec.Command("conntrack", "-V").Run() == nil
+	nftOk := exec.Command("nft", "list", "tables").Run() == nil
+	tcOk := exec.Command("tc", "-Version").Run() == nil
+	if conntrackOk && nftOk && tcOk {
+		return nil
+	}
+	var toInstall []string
+	if !conntrackOk {
+		toInstall = append(toInstall, "conntrack")
+	}
+	if !nftOk {
+		toInstall = append(toInstall, "nftables")
+	}
+	if !tcOk {
+		toInstall = append(toInstall, "iproute2")
+	}
+	if len(toInstall) == 0 {
+		return nil
+	}
+	fmt.Fprintf(os.Stderr, "[*] Устанавливаю недостающие пакеты для полной работы: %v\n", toInstall)
+	script := `
+need_sudo=""
+[ "$(id -u)" -ne 0 ] && need_sudo="sudo"
+install_conntrack() {
+  command -v conntrack >/dev/null 2>&1 && return 0
+  if command -v apt-get >/dev/null 2>&1; then $need_sudo apt-get update -qq; $need_sudo apt-get install -y -qq conntrack; fi
+  if command -v dnf >/dev/null 2>&1; then $need_sudo dnf install -y -q conntrack-tools; fi
+  if command -v yum >/dev/null 2>&1; then $need_sudo yum install -y -q conntrack-tools 2>/dev/null || true; fi
+  if command -v apk >/dev/null 2>&1; then $need_sudo apk add --no-cache conntrack-tools; fi
+}
+install_nftables() {
+  command -v nft >/dev/null 2>&1 && return 0
+  if command -v apt-get >/dev/null 2>&1; then $need_sudo apt-get install -y -qq nftables; fi
+  if command -v dnf >/dev/null 2>&1; then $need_sudo dnf install -y -q nftables; fi
+  if command -v yum >/dev/null 2>&1; then $need_sudo yum install -y -q nftables 2>/dev/null || true; fi
+  if command -v apk >/dev/null 2>&1; then $need_sudo apk add --no-cache nftables; fi
+}
+install_tc() {
+  command -v tc >/dev/null 2>&1 && return 0
+  if command -v apt-get >/dev/null 2>&1; then $need_sudo apt-get install -y -qq iproute2; fi
+  if command -v dnf >/dev/null 2>&1; then $need_sudo dnf install -y -q iproute; fi
+  if command -v yum >/dev/null 2>&1; then $need_sudo yum install -y -q iproute 2>/dev/null || true; fi
+  if command -v apk >/dev/null 2>&1; then $need_sudo apk add --no-cache iproute2; fi
+}
+install_conntrack; install_nftables; install_tc
+`
+	cmd := exec.Command("sh", "-c", script)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("установка пакетов не удалась: %w", err)
+	}
+	engine.RefreshCapabilities()
+	return nil
+}
+
 // ensureWireGuard проверяет наличие wg; при отсутствии запускает скрипт установки.
 func ensureWireGuard() error {
 	engine.RefreshCapabilities()
@@ -136,6 +194,12 @@ func runRun(cmd *cobra.Command, args []string) error {
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("validate: %w", err)
 	}
+
+	// Установка недостающих пакетов (conntrack, nftables, tc) для полной работы.
+	if err := ensureRequiredPackages(); err != nil {
+		fmt.Fprintf(os.Stderr, "[!] %v (демон продолжит работу в ограниченном режиме)\n", err)
+	}
+	engine.RefreshCapabilities()
 
 	// Проверка WireGuard: при отсутствии — попытка установки.
 	if len(cfg.Tunnels) > 0 || cfg.WireGuardServer != nil {
