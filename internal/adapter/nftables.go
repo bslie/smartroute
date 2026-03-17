@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os/exec"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/bslie/smartroute/internal/domain"
@@ -83,6 +84,26 @@ func (a *NFTablesAdapter) Desired(cfg interface{}, decisions interface{}) State 
 	return &NFTablesState{Table: a.TableName, Rules: rules, Raw: content}
 }
 
+// normalizeNFTRuleLine приводит правило к виду "    ip daddr X meta mark set 0xY" (nft list даёт 0x00000101, мы — 0x101).
+func normalizeNFTRuleLine(ln string) string {
+	ln = strings.TrimSpace(ln)
+	if !strings.HasPrefix(ln, "ip daddr ") || !strings.Contains(ln, "meta mark set") {
+		return ""
+	}
+	idx := strings.Index(ln, "meta mark set ")
+	if idx < 0 {
+		return "    " + ln
+	}
+	rest := strings.TrimSpace(ln[idx+len("meta mark set "):])
+	if strings.HasPrefix(rest, "0x") || strings.HasPrefix(rest, "0X") {
+		if v, err := strconv.ParseUint(rest[2:], 16, 32); err == nil {
+			rest = fmt.Sprintf("0x%x", v)
+		}
+	}
+	prefix := strings.TrimSpace(ln[:idx])
+	return "    " + prefix + " meta mark set " + rest
+}
+
 // Observe читает таблицу.
 func (a *NFTablesAdapter) Observe() (State, error) {
 	out, err := exec.Command("nft", "list", "table", "ip", a.TableName).Output()
@@ -93,9 +114,9 @@ func (a *NFTablesAdapter) Observe() (State, error) {
 	lines := strings.Split(raw, "\n")
 	rules := make([]string, 0)
 	for _, ln := range lines {
-		ln = strings.TrimSpace(ln)
-		if strings.HasPrefix(ln, "ip daddr ") && strings.Contains(ln, "meta mark set") {
-			rules = append(rules, "    "+ln)
+		norm := normalizeNFTRuleLine(ln)
+		if norm != "" {
+			rules = append(rules, norm)
 		}
 	}
 	sort.Strings(rules)
