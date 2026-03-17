@@ -243,6 +243,25 @@ func ruleKey(r IPRuleEntry) string {
 	return fmt.Sprintf("%d|%s|%d|%d", r.Priority, r.DestCIDR, r.FwMark, r.TableID)
 }
 
+// parseFwmarkValue парсит значение fwmark из вывода ip rule (0x1, 0x00000001, 1).
+func parseFwmarkValue(s string) (uint32, bool) {
+	s = strings.TrimSpace(s)
+	s = strings.TrimPrefix(s, "0x")
+	s = strings.TrimPrefix(s, "0X")
+	if s == "" {
+		return 0, false
+	}
+	// hex
+	if v, err := strconv.ParseUint(s, 16, 32); err == nil {
+		return uint32(v), true
+	}
+	// decimal (ip rule show иногда выводит без 0x)
+	if v, err := strconv.ParseUint(s, 10, 32); err == nil {
+		return uint32(v), true
+	}
+	return 0, false
+}
+
 func parseIPRuleLine(line string) (IPRuleEntry, bool) {
 	fields := strings.Fields(line)
 	if len(fields) < 2 {
@@ -259,20 +278,19 @@ func parseIPRuleLine(line string) (IPRuleEntry, bool) {
 		switch f {
 		case "to":
 			if i+1 < len(fields) {
-				r.DestCIDR = fields[i+1]
+				r.DestCIDR = strings.TrimSpace(fields[i+1])
 				i++
 			}
 		case "fwmark":
 			if i+1 < len(fields) {
-				fw, err := strconv.ParseUint(strings.TrimPrefix(fields[i+1], "0x"), 16, 32)
-				if err == nil {
-					r.FwMark = uint32(fw)
+				if v, ok := parseFwmarkValue(fields[i+1]); ok {
+					r.FwMark = v
 				}
 				i++
 			}
 		case "lookup", "table":
 			if i+1 < len(fields) {
-				t, err := strconv.Atoi(fields[i+1])
+				t, err := strconv.Atoi(strings.TrimSpace(fields[i+1]))
 				if err == nil {
 					r.TableID = t
 				}
@@ -282,9 +300,8 @@ func parseIPRuleLine(line string) (IPRuleEntry, bool) {
 			if strings.HasPrefix(f, "fwmark") {
 				parts := strings.SplitN(f, "0x", 2)
 				if len(parts) == 2 {
-					fw, err := strconv.ParseUint(parts[1], 16, 32)
-					if err == nil {
-						r.FwMark = uint32(fw)
+					if v, ok := parseFwmarkValue(parts[1]); ok {
+						r.FwMark = v
 					}
 				}
 			}
