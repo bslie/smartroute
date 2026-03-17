@@ -106,6 +106,12 @@ func (a *WireGuardAdapter) Plan(desired, observed State) Diff {
 	return diff
 }
 
+// interfaceExists возвращает true, если интерфейс name существует (ip link show dev name).
+func interfaceExists(name string) bool {
+	err := exec.Command("ip", "link", "show", "dev", name).Run()
+	return err == nil
+}
+
 // Apply удаляет лишние интерфейсы, создаёт/поднимает нужные и применяет wg setconf (ключ, peer).
 func (a *WireGuardAdapter) Apply(diff Diff) error {
 	d, ok := diff.(*WireGuardDiff)
@@ -116,14 +122,24 @@ func (a *WireGuardAdapter) Apply(diff Diff) error {
 		_ = exec.Command("ip", "link", "del", "dev", name).Run()
 	}
 	for _, cfg := range d.Ensure {
-		_ = exec.Command("ip", "link", "add", "dev", cfg.Name, "type", "wireguard").Run()
-		_ = exec.Command("ip", "link", "set", "up", "dev", cfg.Name).Run()
+		if err := exec.Command("ip", "link", "add", "dev", cfg.Name, "type", "wireguard").Run(); err != nil {
+			if !interfaceExists(cfg.Name) {
+				return fmt.Errorf("ip link add %s: %w", cfg.Name, err)
+			}
+			// интерфейс уже существует — продолжаем
+		}
+		if err := exec.Command("ip", "link", "set", "up", "dev", cfg.Name).Run(); err != nil {
+			return fmt.Errorf("ip link set up %s: %w", cfg.Name, err)
+		}
 		body, err := buildWGSetconfContent(cfg)
 		if err != nil {
 			return fmt.Errorf("wg setconf %s: %w", cfg.Name, err)
 		}
 		if len(body) == 0 {
 			continue
+		}
+		if !interfaceExists(cfg.Name) {
+			return fmt.Errorf("interface %s missing before wg setconf", cfg.Name)
 		}
 		cmd := exec.Command("wg", "setconf", cfg.Name, "-")
 		cmd.Stdin = bytes.NewReader(body)
