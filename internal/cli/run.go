@@ -311,6 +311,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 	eng.TickInterval = time.Duration(cfg.TickIntervalMs) * time.Millisecond
 	eng.StateFile = runStateFile
 	eng.GameModeFile = "/var/run/smartroute/game_mode"
+	eng.ProbeLogPath = filepath.Join(filepath.Dir(runStateFile), "probes.log")
 
 	if err := engine.Bootstrap(cfg, st, rec); err != nil {
 		return err

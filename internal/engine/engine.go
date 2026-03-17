@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -39,7 +40,9 @@ type Engine struct {
 	TickInterval     time.Duration
 	StateFile        string // путь для дампа состояния (status без демона)
 	GameModeFile     string // путь к файлу профиля (game/default) — читается каждый тик
+	ProbeLogPath     string // путь к файлу лога проб (пусто = не писать)
 	ConntrackPath    string // путь к /proc/net/nf_conntrack
+	probeLogFile     *os.File
 	Ready            bool
 	cancel           context.CancelFunc
 	prevScores       map[string]float64 // tunnel name -> last health score для событий degraded/recovered
@@ -194,6 +197,10 @@ func (e *Engine) Stop() {
 	}
 	if e.probePool != nil {
 		e.probePool.Stop()
+	}
+	if e.probeLogFile != nil {
+		_ = e.probeLogFile.Close()
+		e.probeLogFile = nil
 	}
 }
 
@@ -371,7 +378,15 @@ func (e *Engine) submitProbeJob(dest *domain.Destination, tunnel string, cfg *do
 		Domain:  dest.Domain,
 		Port:    dest.Port,
 		Tunnel:  tunnel,
-		Iface:   "wg-" + tunnel,
+		// При одном туннеле привязка SO_BINDTODEVICE может давать локальные фейлы проб
+		// (маршрут host-originated не совпадает с policy для transit-трафика).
+		// В этом случае пробуем без привязки к iface.
+		Iface: func() string {
+			if len(e.Store.Tunnels.Names()) <= 1 {
+				return ""
+			}
+			return "wg-" + tunnel
+		}(),
 		Type:    probeType,
 		Timeout: timeout,
 	})
@@ -395,10 +410,46 @@ func (e *Engine) collectProbeResults() {
 				IncProbeFailed()
 			}
 			e.lastProbe[probeKey(r.DestIP, r.Tunnel)] = r
+			e.writeProbeLogLine(&r)
 		default:
 			return
 		}
 	}
+}
+
+// writeProbeLogLine дописывает одну строку в файл лога проб (если ProbeLogPath задан).
+func (e *Engine) writeProbeLogLine(r *domain.ProbeResult) {
+	if e.ProbeLogPath == "" || r == nil {
+		return
+	}
+	if e.probeLogFile == nil {
+		if err := os.MkdirAll(filepath.Dir(e.ProbeLogPath), 0755); err != nil {
+			// путь может быть другим — пробуем просто открыть
+		}
+		f, err := os.OpenFile(e.ProbeLogPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+		if err != nil {
+			return
+		}
+		e.probeLogFile = f
+	}
+	dest := ""
+	if r.DestIP != nil {
+		dest = r.DestIP.String()
+	}
+	line := fmt.Sprintf("%s\t%s\t%s\t%s\t%d\t%s",
+		time.Now().Format(time.RFC3339Nano),
+		dest,
+		r.Tunnel,
+		string(r.Type),
+		r.LatencyMs,
+		string(r.ErrorClass),
+	)
+	if r.Type == domain.ProbeHTTP && r.StatusCode > 0 {
+		line += fmt.Sprintf("\t%d", r.StatusCode)
+	}
+	line += "\n"
+	_, _ = e.probeLogFile.WriteString(line)
+	_ = e.probeLogFile.Sync()
 }
 
 func (e *Engine) updateTunnelHealthFromPassive() {
