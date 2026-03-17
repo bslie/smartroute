@@ -126,6 +126,20 @@ func ensureWGServer(cfg *domain.Config, cfgPath string) (string, string, bool, e
 		}
 	}
 
+	// NAT для трафика клиентов (PeersSubnet), уходящего в туннели SmartRoute — иначе ответы не вернутся.
+	if ws.PeersSubnet != "" && len(cfg.Tunnels) > 0 {
+		for _, t := range cfg.Tunnels {
+			if t.Name == "" {
+				continue
+			}
+			outIface := "wg-" + t.Name
+			args := []string{"-t", "nat", "-C", "POSTROUTING", "-s", ws.PeersSubnet, "-o", outIface, "-j", "MASQUERADE"}
+			if exec.Command("iptables", args...).Run() != nil {
+				_ = exec.Command("iptables", "-t", "nat", "-A", "POSTROUTING", "-s", ws.PeersSubnet, "-o", outIface, "-j", "MASQUERADE").Run()
+			}
+		}
+	}
+
 	pubOut, err := exec.Command("wg", "show", ws.Interface, "public-key").Output()
 	if err != nil {
 		return "", "", changed, fmt.Errorf("получить public key %s: %w", ws.Interface, err)
