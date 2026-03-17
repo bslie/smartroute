@@ -357,14 +357,19 @@ func (e *Engine) submitProbeJob(dest *domain.Destination, tunnel string, cfg *do
 		timeout = 2 * time.Second
 	}
 	probeType := domain.ProbeTCP
+	if dest.Proto == 17 {
+		// Для UDP-destination TCP connect нерелевантен — используем ICMP reachability.
+		probeType = domain.ProbeICMP
+	}
 	// HTTP-проба корректна только когда известен домен (SNI/Host).
 	// При пустом домене (часто при выключенном dns_log) используем TCP-пробу.
-	if cfg.Probe.HTTPCheck && dest.Domain != "" {
+	if cfg.Probe.HTTPCheck && dest.Domain != "" && probeType == domain.ProbeTCP {
 		probeType = domain.ProbeHTTP
 	}
 	_ = e.probePool.Submit(probe.Job{
 		DestIP:  dest.IP,
 		Domain:  dest.Domain,
+		Port:    dest.Port,
 		Tunnel:  tunnel,
 		Iface:   "wg-" + tunnel,
 		Type:    probeType,

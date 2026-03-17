@@ -19,12 +19,16 @@ func RunProbe(j Job) domain.ProbeResult {
 	if host == "" {
 		return domain.ProbeResult{ErrorClass: domain.ErrorUnknown, Timestamp: time.Now()}
 	}
+	port := j.Port
+	if port == 0 {
+		port = 443
+	}
 	switch j.Type {
 	case domain.ProbeHTTP:
-		return HTTPProbeIface(host, j.Domain, j.Iface, 443, timeout)
+		return HTTPProbeIface(host, j.Domain, j.Iface, port, timeout)
 	case domain.ProbeICMP:
 		return ICMPProbeIface(host, j.Iface, timeout)
 	default:
-		return TCPProbeIface(host, j.Iface, 443, timeout)
+		return TCPProbeIface(host, j.Iface, port, timeout)
 	}
 }
