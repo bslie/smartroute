@@ -12,9 +12,10 @@ type Result = domain.ProbeResult
 
 // Job — задание на пробу.
 type Job struct {
-	DestIP   net.IP
-	Tunnel   string
-	Iface    string
-	Type     domain.ProbeType
-	Timeout  time.Duration
+	DestIP  net.IP
+	Domain  string // доменное имя цели (для SNI в TLS); если пусто, SNI выставляется по IP
+	Tunnel  string
+	Iface   string
+	Type    domain.ProbeType
+	Timeout time.Duration
 }

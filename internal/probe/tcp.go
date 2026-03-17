@@ -3,6 +3,7 @@ package probe
 import (
 	"fmt"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/bslie/smartroute/internal/domain"
@@ -35,15 +36,11 @@ func TCPProbeIface(host, iface string, port uint16, timeout time.Duration) domai
 	conn, err := dialer.Dial("tcp", addr)
 	latencyMs := int(time.Since(start).Milliseconds())
 	if err != nil {
-		errClass := domain.ErrorUnknown
-		if ne, ok := err.(net.Error); ok && ne.Timeout() {
-			errClass = domain.ErrorTimeout
-		}
 		return domain.ProbeResult{
 			DestIP:     net.ParseIP(host),
 			Type:       domain.ProbeTCP,
 			LatencyMs:  latencyMs,
-			ErrorClass: errClass,
+			ErrorClass: classifyTCPErr(err),
 			Confidence: 0.3,
 			Timestamp:  time.Now(),
 		}
@@ -65,4 +62,18 @@ func TCPProbeIface(host, iface string, port uint16, timeout time.Duration) domai
 		Confidence: conf,
 		Timestamp:  time.Now(),
 	}
+}
+
+func classifyTCPErr(err error) domain.ErrorClass {
+	if ne, ok := err.(net.Error); ok && ne.Timeout() {
+		return domain.ErrorTimeout
+	}
+	s := err.Error()
+	if strings.Contains(s, "connection refused") || strings.Contains(s, "ECONNREFUSED") {
+		return domain.ErrorConnRefused
+	}
+	if strings.Contains(s, "no route") || strings.Contains(s, "network unreachable") || strings.Contains(s, "host unreachable") {
+		return domain.ErrorTimeout
+	}
+	return domain.ErrorUnknown
 }

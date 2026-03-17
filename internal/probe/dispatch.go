@@ -21,7 +21,7 @@ func RunProbe(j Job) domain.ProbeResult {
 	}
 	switch j.Type {
 	case domain.ProbeHTTP:
-		return HTTPProbeIface(host, j.Iface, 443, timeout)
+		return HTTPProbeIface(host, j.Domain, j.Iface, 443, timeout)
 	case domain.ProbeICMP:
 		return ICMPProbeIface(host, j.Iface, timeout)
 	default:

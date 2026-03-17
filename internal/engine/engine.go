@@ -362,6 +362,7 @@ func (e *Engine) submitProbeJob(dest *domain.Destination, tunnel string, cfg *do
 	}
 	_ = e.probePool.Submit(probe.Job{
 		DestIP:  dest.IP,
+		Domain:  dest.Domain,
 		Tunnel:  tunnel,
 		Iface:   "wg-" + tunnel,
 		Type:    probeType,
