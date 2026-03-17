@@ -174,6 +174,7 @@ func generateVPSScript(name, clientPubkey, clientSubnet, listenPort string) stri
 #   smartroute tunnel set-peer %s <ключ>
 
 set -e
+umask 077
 WG_NAME="wg0"
 TUNNEL_NAME="%s"
 LISTEN_PORT="%s"
@@ -206,15 +207,13 @@ mkdir -p /etc/wireguard
 chmod 700 /etc/wireguard
 
 if [ ! -f "/etc/wireguard/${WG_NAME}_private.key" ]; then
-  wg genkey > "/etc/wireguard/${WG_NAME}_private.key"
-  wg pubkey < "/etc/wireguard/${WG_NAME}_private.key" > "/etc/wireguard/${WG_NAME}_public.key"
-  chmod 600 "/etc/wireguard/${WG_NAME}_private.key"
+  wg genkey | tee "/etc/wireguard/${WG_NAME}_private.key" | wg pubkey > "/etc/wireguard/${WG_NAME}_public.key"
+  chmod 600 "/etc/wireguard/${WG_NAME}_private.key" "/etc/wireguard/${WG_NAME}_public.key"
 fi
 
 SERVER_PRIVKEY=$(cat "/etc/wireguard/${WG_NAME}_private.key")
 
 # wg setconf не поддерживает Address — только PrivateKey, ListenPort; адрес задаём через ip ниже
-umask 077
 printf '[Interface]\nPrivateKey = %s\nListenPort = %s\n\n[Peer]\nPublicKey = %s\nAllowedIPs = %s\n' \
   "$SERVER_PRIVKEY" "$LISTEN_PORT" "$CLIENT_PUBKEY" "$CLIENT_SUBNET" \
   > "/etc/wireguard/${WG_NAME}.conf"

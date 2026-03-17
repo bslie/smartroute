@@ -189,8 +189,24 @@ func applyTunnelNow(t domain.TunnelConfig, index int) error {
 	b.WriteString("\nEndpoint = ")
 	b.WriteString(strings.TrimSpace(t.Endpoint))
 	b.WriteString("\nAllowedIPs = 0.0.0.0/0, ::/0\nPersistentKeepalive = 25\n")
-	setconf := exec.Command("wg", "setconf", iface, "-")
-	setconf.Stdin = strings.NewReader(b.String())
+	tmpFile, err := os.CreateTemp("", "smartroute-wg-*.conf")
+	if err != nil {
+		return fmt.Errorf("create temp config: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath)
+	if _, err := tmpFile.WriteString(b.String()); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("write temp config: %w", err)
+	}
+	if err := tmpFile.Chmod(0600); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("chmod temp config: %w", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		return fmt.Errorf("close temp config: %w", err)
+	}
+	setconf := exec.Command("wg", "setconf", iface, tmpPath)
 	if out, setErr := setconf.CombinedOutput(); setErr != nil {
 		return fmt.Errorf("wg setconf %s: %w: %s", iface, setErr, strings.TrimSpace(string(out)))
 	}
