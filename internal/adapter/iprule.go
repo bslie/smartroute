@@ -239,6 +239,25 @@ func normalizeDest(ip net.IP) string {
 	return ip.String() + "/128"
 }
 
+// normalizeDestCIDR приводит "to" из вывода ip rule show к виду с маской (ip show даёт 1.2.3.4 без /32).
+func normalizeDestCIDR(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return s
+	}
+	if strings.Contains(s, "/") {
+		return s
+	}
+	ip := net.ParseIP(s)
+	if ip == nil {
+		return s
+	}
+	if ip.To4() != nil {
+		return s + "/32"
+	}
+	return s + "/128"
+}
+
 func ruleKey(r IPRuleEntry) string {
 	return fmt.Sprintf("%d|%s|%d|%d", r.Priority, r.DestCIDR, r.FwMark, r.TableID)
 }
@@ -278,7 +297,7 @@ func parseIPRuleLine(line string) (IPRuleEntry, bool) {
 		switch f {
 		case "to":
 			if i+1 < len(fields) {
-				r.DestCIDR = strings.TrimSpace(fields[i+1])
+				r.DestCIDR = normalizeDestCIDR(fields[i+1])
 				i++
 			}
 		case "fwmark":
