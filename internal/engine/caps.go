@@ -49,15 +49,19 @@ func RefreshCapabilities() {
 	DetectCapabilities(&defaultCaps)
 }
 
-// RefreshCapabilitiesFromConfig обновляет capabilities с учётом конфига (например DNSLog при dnsmasq_log_path).
+// RefreshCapabilitiesFromConfig обновляет capabilities с учётом конфига (например DNSLog при dnsmasq_log_path или авто-пути).
 func RefreshCapabilitiesFromConfig(cfg *domain.Config) {
 	if cfg == nil {
 		return
 	}
 	defaultCaps.mu.Lock()
 	defer defaultCaps.mu.Unlock()
-	if cfg.DnsmasqLogPath != "" {
-		if _, err := os.Stat(cfg.DnsmasqLogPath); err == nil {
+	path := cfg.DnsmasqLogPath
+	if path == "" {
+		path = defaultDnsmasqLogPath()
+	}
+	if path != "" {
+		if _, err := os.Stat(path); err == nil {
 			defaultCaps.DNSLog = true
 		}
 	}

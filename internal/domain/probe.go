@@ -32,6 +32,7 @@ const (
 // ProbeResult — результат одной пробы.
 type ProbeResult struct {
 	DestIP     net.IP
+	Domain     string // домен цели (если был в Job); пусто при dns_log отключён
 	Tunnel     string
 	Type       ProbeType
 	LatencyMs  int

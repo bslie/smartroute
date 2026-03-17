@@ -76,7 +76,7 @@ func runLogsProbes(cmd *cobra.Command, args []string) error {
 		n = len(lines)
 	}
 	start := len(lines) - n
-	fmt.Println("# time\tdest\ttunnel\ttype\tlatency_ms\terror_class\t[status_code]")
+	fmt.Println("# time\tdest\tdomain\ttunnel\ttype\tlatency_ms\terror_class\t[status_code]")
 	for i := start; i < len(lines); i++ {
 		fmt.Println(lines[i])
 	}

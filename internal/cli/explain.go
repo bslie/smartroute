@@ -121,7 +121,23 @@ func runExplainTunnel(cmd *cobra.Command, args []string) error {
 		os.Exit(1)
 	}
 	fmt.Printf("Tunnel: %s\n", name)
-	fmt.Printf("  State: (from daemon; see status for generation %d)\n", snap.Generation)
-	fmt.Printf("  Destinations: %d (total in system)\n", snap.DestCount)
+	assigned := 0
+	if snap.DestCountByTunnel != nil {
+		assigned = snap.DestCountByTunnel[name]
+	}
+	fmt.Printf("  Assigned: %d destinations (of %d total)\n", assigned, snap.DestCount)
+	fmt.Printf("  Generation: %d\n", snap.Generation)
+	if contains(snap.DisabledFeat, "dns_log") {
+		fmt.Println("  Примечание: домены недоступны (dns_log отключён) — только TCP/ICMP пробы, HTTP и детекция geo-block (403) не работают.")
+	}
 	return nil
+}
+
+func contains(s []string, x string) bool {
+	for _, v := range s {
+		if v == x {
+			return true
+		}
+	}
+	return false
 }

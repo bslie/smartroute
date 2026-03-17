@@ -215,9 +215,14 @@ func (e *Engine) Stop() {
 
 // runObserveDecideLoop: conntrack → destinations → classify → decide → store (assignments).
 func (e *Engine) runObserveDecideLoop(cfg *domain.Config) {
-	// Подпитка DNS-кэша из лога dnsmasq (confidence 0.8 по доке)
-	if cfg.DnsmasqLogPath != "" && e.dnsCache != nil {
-		records, _ := observer.ReadDnsmasqLog(cfg.DnsmasqLogPath, 64*1024)
+	// Подпитка DNS-кэша из лога dnsmasq (confidence 0.8 по доке).
+	// Если в конфиге путь не задан — пробуем стандартные пути автоматически.
+	dnsLogPath := cfg.DnsmasqLogPath
+	if dnsLogPath == "" {
+		dnsLogPath = defaultDnsmasqLogPath()
+	}
+	if dnsLogPath != "" && e.dnsCache != nil {
+		records, _ := observer.ReadDnsmasqLog(dnsLogPath, 64*1024)
 		for _, rec := range records {
 			e.dnsCache.Set(rec.IP, rec.Domain, 0.8)
 		}
@@ -444,9 +449,14 @@ func (e *Engine) writeProbeLogLine(r *domain.ProbeResult) {
 	if r.DestIP != nil {
 		dest = r.DestIP.String()
 	}
-	line := fmt.Sprintf("%s\t%s\t%s\t%s\t%d\t%s",
+	domain := r.Domain
+	if domain == "" {
+		domain = "-"
+	}
+	line := fmt.Sprintf("%s\t%s\t%s\t%s\t%s\t%d\t%s",
 		time.Now().Format(time.RFC3339Nano),
 		dest,
+		domain,
 		r.Tunnel,
 		string(r.Type),
 		r.LatencyMs,
@@ -700,6 +710,16 @@ func penaltyForScore(score float64) int {
 
 func probeKey(ip interface{ String() string }, tunnel string) string {
 	return fmt.Sprintf("%s|%s", ip.String(), tunnel)
+}
+
+// defaultDnsmasqLogPath возвращает первый существующий стандартный путь к логу dnsmasq (для авто-подключения dns_log).
+func defaultDnsmasqLogPath() string {
+	for _, p := range []string{"/var/log/dnsmasq.log", "/var/log/pihole/pihole.log"} {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
 }
 
 func readGameModeFile(path string) string {

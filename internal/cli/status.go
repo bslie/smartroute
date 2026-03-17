@@ -45,6 +45,12 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	fmt.Println("  Пробы (задержки): при Destinations > 0; счётчики — smartroute metrics (probe_total, probe_failed_total)")
 	if len(snap.DisabledFeat) > 0 {
 		fmt.Println("  Disabled features:", snap.DisabledFeat)
+		for _, f := range snap.DisabledFeat {
+			if f == "dns_log" {
+				fmt.Println("  Без dns_log: доменов нет → только TCP/ICMP пробы; переключение по geo-block (HTTP 403) недоступно.")
+				break
+			}
+		}
 	}
 	if snap.LastReconcileError != "" {
 		fmt.Println("  Last reconcile err:", snap.LastReconcileError)

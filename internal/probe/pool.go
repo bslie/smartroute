@@ -51,6 +51,7 @@ func (p *Pool) worker(ctx context.Context) {
 			}
 			r := p.probeFn(j)
 			r.DestIP = j.DestIP
+			r.Domain = j.Domain
 			r.Tunnel = j.Tunnel
 			r.Type = j.Type
 			select {

@@ -260,7 +260,35 @@ do_install() {
     fi
 }
 
-# 7. Проверка после установки
+# 7. Автонастройка лога dnsmasq для dns_log (домены → HTTP-пробы и geo-block)
+setup_dnsmasq_log() {
+    if ! command -v dnsmasq &>/dev/null; then
+        return
+    fi
+    NEED_SUDO=""
+    [ "$(id -u)" -ne 0 ] && NEED_SUDO="sudo"
+    DROPIN="/etc/dnsmasq.d/99-smartroute.conf"
+    LOGFILE="/var/log/dnsmasq.log"
+    if [ -d /etc/dnsmasq.d ] 2>/dev/null || $NEED_SUDO mkdir -p /etc/dnsmasq.d 2>/dev/null; then
+        if [ ! -f "$DROPIN" ] 2>/dev/null; then
+            echo "[*] Включаю лог запросов dnsmasq для SmartRoute (dns_log)..."
+            $NEED_SUDO tee "$DROPIN" >/dev/null <<EOF
+# SmartRoute: лог ответов для подпитки DNS-кэша (домены → HTTP-пробы, geo-block)
+log-queries
+log-facility=$LOGFILE
+EOF
+            $NEED_SUDO touch "$LOGFILE" 2>/dev/null
+            $NEED_SUDO chmod 644 "$LOGFILE" 2>/dev/null
+            if $NEED_SUDO systemctl restart dnsmasq 2>/dev/null || $NEED_SUDO service dnsmasq restart 2>/dev/null; then
+                echo "[OK] dnsmasq перезапущен, лог: $LOGFILE"
+            else
+                echo "[!] Перезапустите dnsmasq вручную: systemctl restart dnsmasq"
+            fi
+        fi
+    fi
+}
+
+# 8. Проверка после установки
 verify() {
     if command -v smartroute &>/dev/null || [ -x "$INSTALL_DIR/bin/smartroute" ]; then
         EXEC=smartroute
@@ -278,6 +306,7 @@ deps
 build
 stop_daemon_if_running
 do_install
+setup_dnsmasq_log
 verify
 
 if [ "$SMARTROUTE_WAS_RUNNING" = "1" ]; then

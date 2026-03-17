@@ -57,7 +57,10 @@ qos:
 
 shutdown_cleanup: full   # full | preserve | rules-only
 dest_ttl: 120s
-# dnsmasq_log_path: /var/log/dnsmasq.log   # опционально: лог dnsmasq (log-queries) для подпитки DNS-кэша
+# dns_log: для HTTP-проб и переключения по geo-block (403) нужны домены.
+# 1) В dnsmasq включите log-queries и укажите log-facility (см. ниже).
+# 2) Раскомментируйте и укажите путь к логу:
+# dnsmasq_log_path: /var/log/dnsmasq.log
 tunnel_quarantine_cooldown_sec: 60
 sticky_cycles: 5
 hysteresis_web_pct: 15

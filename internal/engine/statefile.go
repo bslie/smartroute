@@ -19,9 +19,10 @@ type StateSnapshot struct {
 	AppliedConfigGen  uint64    `json:"applied_config_gen"`
 	Ready             bool      `json:"ready"`
 	ActiveProfile     string    `json:"active_profile"`
-	TunnelNames       []string  `json:"tunnel_names"`
-	DestCount            int       `json:"dest_count"`
-	ConntrackEntries     int       `json:"conntrack_entries_last_tick,omitempty"`
+	TunnelNames         []string          `json:"tunnel_names"`
+	DestCount           int               `json:"dest_count"`
+	DestCountByTunnel   map[string]int    `json:"dest_count_by_tunnel,omitempty"`
+	ConntrackEntries    int               `json:"conntrack_entries_last_tick,omitempty"`
 	DisabledFeat         []string  `json:"disabled_features,omitempty"`
 	At                time.Time `json:"at"`
 
@@ -42,6 +43,12 @@ type StateSnapshot struct {
 // BuildStateSnapshot строит снимок из store. Вызывающий код должен держать st.Lock().
 func BuildStateSnapshot(st *store.Store) StateSnapshot {
 	m := metrics.LoadAll()
+	destByTunnel := make(map[string]int)
+	for _, a := range st.Assignments.All() {
+		if a != nil && a.TunnelName != "" {
+			destByTunnel[a.TunnelName]++
+		}
+	}
 	return StateSnapshot{
 		Generation:         st.Generation,
 		Applied:            st.AppliedGen,
@@ -50,8 +57,9 @@ func BuildStateSnapshot(st *store.Store) StateSnapshot {
 		Ready:              st.Ready,
 		ActiveProfile:      st.ActiveProfile,
 		TunnelNames:        st.Tunnels.Names(),
-		DestCount:            st.Destinations.Count(),
-		ConntrackEntries:     st.LastConntrackEntries,
+		DestCount:          st.Destinations.Count(),
+		DestCountByTunnel:  destByTunnel,
+		ConntrackEntries:   st.LastConntrackEntries,
 		DisabledFeat:         defaultCaps.DisabledFeatures(),
 		At:                 time.Now(),
 		ReconcileCycles:    m.ReconcileCycles,
