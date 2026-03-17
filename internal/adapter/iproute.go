@@ -47,6 +47,17 @@ func (a *IPRouteAdapter) Desired(cfg interface{}, decisions interface{}) State {
 	return st
 }
 
+// normalizeRouteLine приводит строку маршрута к виду для сравнения (ip route show может добавлять " scope link" и т.п.).
+func normalizeRouteLine(s string) string {
+	s = strings.TrimSpace(s)
+	for _, suffix := range []string{" scope link", " scope global", " scope host"} {
+		if strings.HasSuffix(s, suffix) {
+			return strings.TrimSuffix(s, suffix)
+		}
+	}
+	return s
+}
+
 // Observe читает маршруты из управляемых таблиц (200–209).
 func (a *IPRouteAdapter) Observe() (State, error) {
 	st := &IPRouteState{TableRoutes: make(map[int][]string)}
@@ -58,7 +69,7 @@ func (a *IPRouteAdapter) Observe() (State, error) {
 		}
 		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
 		for _, ln := range lines {
-			ln = strings.TrimSpace(ln)
+			ln = normalizeRouteLine(ln)
 			if ln == "" {
 				continue
 			}
@@ -159,10 +170,10 @@ func (a *IPRouteAdapter) Verify(desired State) error {
 	for table, wantRoutes := range d.TableRoutes {
 		have := make(map[string]struct{})
 		for _, r := range o.TableRoutes[table] {
-			have[r] = struct{}{}
+			have[normalizeRouteLine(r)] = struct{}{}
 		}
 		for _, r := range wantRoutes {
-			if _, ok := have[r]; !ok {
+			if _, ok := have[normalizeRouteLine(r)]; !ok {
 				return fmt.Errorf("ip route table %d: missing route %s", table, r)
 			}
 		}
