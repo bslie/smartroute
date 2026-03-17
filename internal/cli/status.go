@@ -41,6 +41,8 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	fmt.Println("  Applied:          ", snap.AppliedConfigGen)
 	fmt.Println("  Tunnels:          ", snap.TunnelNames)
 	fmt.Println("  Destinations:     ", snap.DestCount)
+	fmt.Printf("  Conntrack (тик):   %d записей → %d уникальных dst\n", snap.ConntrackEntries, snap.DestCount)
+	fmt.Println("  Пробы (задержки): при Destinations > 0; счётчики — smartroute metrics (probe_total, probe_failed_total)")
 	if len(snap.DisabledFeat) > 0 {
 		fmt.Println("  Disabled features:", snap.DisabledFeat)
 	}

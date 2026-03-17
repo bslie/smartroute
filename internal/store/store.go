@@ -23,6 +23,8 @@ type Store struct {
 	AppliedConfigGen uint64 // последняя применённая config generation
 	ActiveProfile   string
 	Ready           bool
+	// LastConntrackEntries — число записей conntrack за последний тик (для диагностики: есть ли трафик).
+	LastConntrackEntries int
 }
 
 // New создаёт Store с дефолтными подхранилищами.

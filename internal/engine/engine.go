@@ -208,8 +208,10 @@ func (e *Engine) runObserveDecideLoop(cfg *domain.Config) {
 	}
 	entries, err := observer.ReadConntrack(e.ConntrackPath)
 	if err != nil {
+		e.Store.LastConntrackEntries = 0
 		return
 	}
+	e.Store.LastConntrackEntries = len(entries)
 	tunnels := e.Store.Tunnels.All()
 	defaultTunnel := decision.DefaultTunnelFromList(tunnels)
 	if defaultTunnel == "" && len(tunnels) > 0 {

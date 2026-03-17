@@ -20,8 +20,9 @@ type StateSnapshot struct {
 	Ready             bool      `json:"ready"`
 	ActiveProfile     string    `json:"active_profile"`
 	TunnelNames       []string  `json:"tunnel_names"`
-	DestCount         int       `json:"dest_count"`
-	DisabledFeat      []string  `json:"disabled_features,omitempty"`
+	DestCount            int       `json:"dest_count"`
+	ConntrackEntries     int       `json:"conntrack_entries_last_tick,omitempty"`
+	DisabledFeat         []string  `json:"disabled_features,omitempty"`
 	At                time.Time `json:"at"`
 
 	// Metrics
@@ -49,8 +50,9 @@ func BuildStateSnapshot(st *store.Store) StateSnapshot {
 		Ready:              st.Ready,
 		ActiveProfile:      st.ActiveProfile,
 		TunnelNames:        st.Tunnels.Names(),
-		DestCount:          st.Destinations.Count(),
-		DisabledFeat:       defaultCaps.DisabledFeatures(),
+		DestCount:            st.Destinations.Count(),
+		ConntrackEntries:     st.LastConntrackEntries,
+		DisabledFeat:         defaultCaps.DisabledFeatures(),
 		At:                 time.Now(),
 		ReconcileCycles:    m.ReconcileCycles,
 		ReconcileErrors:    m.ReconcileErrors,
