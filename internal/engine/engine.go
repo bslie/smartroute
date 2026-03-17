@@ -146,7 +146,7 @@ func (e *Engine) tick(ctx context.Context) {
 		}
 	}
 	for _, name := range e.Store.Tunnels.Names() {
-		if _, inCfg := configNames[name]; !inCfg {
+		if _, inCfg := configNames[name]; !inCfg && name != domain.LocalTunnelName {
 			e.Store.Tunnels.Delete(name)
 			delete(e.quarantineState, name)
 			delete(e.degradedSince, name)
@@ -159,6 +159,15 @@ func (e *Engine) tick(ctx context.Context) {
 				}
 			}
 		}
+	}
+	// Автосоздание псевдо-туннеля "local" (прямой маршрут, без WG).
+	if e.Store.Tunnels.Get(domain.LocalTunnelName) == nil {
+		e.Store.Tunnels.Set(&domain.Tunnel{
+			Name:    domain.LocalTunnelName,
+			IsLocal: true,
+			State:   domain.TunnelStateActive,
+			Health:  domain.TunnelHealth{Score: 1.0, Liveness: domain.LivenessUp},
+		})
 	}
 	if !e.Store.Ready {
 		e.Store.Ready = true
@@ -308,11 +317,14 @@ func (e *Engine) runObserveDecideLoop(cfg *domain.Config) {
 		if assignment != nil {
 			assignment.Generation = e.Store.ConfigGeneration
 			e.Store.Assignments.Set(dest.IP, assignment)
-			// Счётчик переключений туннеля
 			if prevAssignment == nil || prevAssignment.TunnelName != assignment.TunnelName {
 				metrics.IncAssignmentSwitches()
 			}
 			e.submitProbeJob(dest, assignment.TunnelName, cfg)
+			// Для сравнительной оценки запускаем пробу и через local
+			if assignment.TunnelName != domain.LocalTunnelName {
+				e.submitProbeJob(dest, domain.LocalTunnelName, cfg)
+			}
 		}
 	}
 	// GC destinations: stale и expired по cfg.DestTTL (docs: dest_ttl 120s default)
@@ -373,20 +385,16 @@ func (e *Engine) submitProbeJob(dest *domain.Destination, tunnel string, cfg *do
 	if cfg.Probe.HTTPCheck && dest.Domain != "" && probeType == domain.ProbeTCP {
 		probeType = domain.ProbeHTTP
 	}
+	iface := ""
+	if tunnel != domain.LocalTunnelName {
+		iface = "wg-" + tunnel
+	}
 	_ = e.probePool.Submit(probe.Job{
 		DestIP:  dest.IP,
 		Domain:  dest.Domain,
 		Port:    dest.Port,
 		Tunnel:  tunnel,
-		// При одном туннеле привязка SO_BINDTODEVICE может давать локальные фейлы проб
-		// (маршрут host-originated не совпадает с policy для transit-трафика).
-		// В этом случае пробуем без привязки к iface.
-		Iface: func() string {
-			if len(e.Store.Tunnels.Names()) <= 1 {
-				return ""
-			}
-			return "wg-" + tunnel
-		}(),
+		Iface:   iface,
 		Type:    probeType,
 		Timeout: timeout,
 	})
@@ -455,6 +463,14 @@ func (e *Engine) writeProbeLogLine(r *domain.ProbeResult) {
 func (e *Engine) updateTunnelHealthFromPassive() {
 	now := time.Now()
 	for _, t := range e.Store.Tunnels.All() {
+		if t.IsLocal {
+			t.Health.Liveness = domain.LivenessUp
+			t.Health.Score = 1.0
+			t.Health.PenaltyMs = 0
+			t.Health.LastCheck = now
+			e.Store.Tunnels.Set(t)
+			continue
+		}
 		t.Health.HandshakeAgeSec = -1
 		t.Health.PacketLossPct = 0
 		if ageSec, err := observer.ReadWGHandshake(t.Interface); err == nil && ageSec >= 0 {
@@ -542,6 +558,9 @@ func (e *Engine) runTunnelStateMachine(cfg *domain.Config) {
 	_ = cfg
 	now := time.Now()
 	for _, t := range e.Store.Tunnels.All() {
+		if t.IsLocal {
+			continue
+		}
 		score := t.Health.Score
 		isHealthy := score >= 0.8
 

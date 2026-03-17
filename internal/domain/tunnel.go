@@ -46,7 +46,10 @@ type TunnelHealth struct {
 	PacketLossPct   float64 // оценка потери пакетов (0–100)
 }
 
-// Tunnel — туннель WireGuard.
+// LocalTunnelName — зарезервированное имя для локального (direct) маршрута.
+const LocalTunnelName = "local"
+
+// Tunnel — туннель WireGuard или псевдо-туннель (local).
 type Tunnel struct {
 	Name       string
 	Endpoint   string
@@ -54,6 +57,7 @@ type Tunnel struct {
 	RouteTable int
 	FWMark     uint32
 	IsDefault  bool
+	IsLocal    bool // true = прямой маршрут через основной интерфейс (не WG)
 	State      TunnelState
 	Health     TunnelHealth
 	Disabled   bool
