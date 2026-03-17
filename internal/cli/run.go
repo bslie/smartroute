@@ -25,8 +25,10 @@ import (
 )
 
 var (
-	runConfigPath string
-	runStateFile  string
+	runConfigPath   string
+	runStateFile    string
+	runForeground   bool
+	runDaemonChild  bool
 )
 
 var runCmd = &cobra.Command{
@@ -38,6 +40,31 @@ var runCmd = &cobra.Command{
 func init() {
 	runCmd.Flags().StringVarP(&runConfigPath, "config", "c", "/etc/smartroute/config.yaml", "путь к конфигу")
 	runCmd.Flags().StringVar(&runStateFile, "state-file", "/var/run/smartroute/state.json", "файл состояния для status")
+	runCmd.Flags().BoolVar(&runForeground, "foreground", false, "не уходить в фон (оставить в консоли)")
+	runCmd.Flags().BoolVar(&runDaemonChild, "daemon-child", false, "внутренний флаг: процесс-демон (не задавать вручную)")
+	_ = runCmd.Flags().MarkHidden("daemon-child")
+}
+
+// runDaemonize запускает себя с флагом --daemon-child и завершает родителя.
+func runDaemonize() error {
+	exe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("daemonize: %w", err)
+	}
+	childArgs := []string{"run", "--daemon-child",
+		"-c", runConfigPath,
+		"--state-file", runStateFile,
+	}
+	proc := exec.Command(exe, childArgs...)
+	proc.Stdin = nil
+	proc.Stdout = nil
+	proc.Stderr = nil
+	proc.Dir = "/"
+	if err := proc.Start(); err != nil {
+		return fmt.Errorf("daemonize start: %w", err)
+	}
+	fmt.Fprintf(os.Stderr, "[*] Демон запущен в фоне (PID %d). Статус: smartroute status\n", proc.Process.Pid)
+	return nil
 }
 
 // findInstallWireGuardScript возвращает путь к scripts/install-wireguard.sh или пустую строку.
@@ -210,6 +237,16 @@ func runRun(cmd *cobra.Command, args []string) error {
 	// Создаём рабочий каталог для state-файла и game_mode до любых операций.
 	if err := os.MkdirAll(filepath.Dir(runStateFile), 0755); err != nil {
 		return fmt.Errorf("create state dir: %w", err)
+	}
+
+	// По умолчанию уходим в фон: запускаем дочерний процесс с --daemon-child и выходим.
+	if !runForeground && !runDaemonChild && runtime.GOOS == "linux" {
+		return runDaemonize()
+	}
+
+	// В дочернем процессе (или --foreground): отвязка от терминала и перенаправление stdio.
+	if runDaemonChild && runtime.GOOS == "linux" {
+		daemonizeDetach()
 	}
 
 	cfg, err := loadOrCreateConfig(runConfigPath)
