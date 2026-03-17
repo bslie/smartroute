@@ -15,6 +15,7 @@ import (
 	"github.com/bslie/smartroute/internal/adapter"
 	"github.com/bslie/smartroute/internal/domain"
 	"github.com/bslie/smartroute/internal/engine"
+	"github.com/bslie/smartroute/internal/metrics"
 	"github.com/bslie/smartroute/internal/eventbus"
 	"github.com/bslie/smartroute/internal/memlog"
 	"github.com/bslie/smartroute/internal/store"
@@ -236,7 +237,9 @@ func runRun(cmd *cobra.Command, args []string) error {
 	}
 	rec := engine.NewReconciler(adapters, 500*time.Millisecond)
 	rec.SetErrorLog(func(adapterName, phase string, err error) {
-		ml.Write("error", adapterName+": "+phase+": "+err.Error())
+		msg := adapterName + ": " + phase + ": " + err.Error()
+		ml.Write("error", msg)
+		metrics.SetLastReconcileError(msg)
 	})
 
 	var cfgMu sync.RWMutex

@@ -2,7 +2,10 @@
 // Используется engine, adapter; читается CLI командой metrics.
 package metrics
 
-import "sync/atomic"
+import (
+	"sync"
+	"sync/atomic"
+)
 
 var (
 	ReconcileCyclesTotal uint64
@@ -15,6 +18,11 @@ var (
 	RuleSyncDels         uint64
 	TCFlushCount         uint64
 	TCFlushDurationMs    int64
+)
+
+var (
+	lastReconcileErrorMu sync.Mutex
+	lastReconcileError   string
 )
 
 func IncReconcileCycles()   { atomic.AddUint64(&ReconcileCyclesTotal, 1) }
@@ -32,31 +40,49 @@ func LoadRuleSyncAdds() uint64 { return atomic.LoadUint64(&RuleSyncAdds) }
 func LoadRuleSyncDels() uint64 { return atomic.LoadUint64(&RuleSyncDels) }
 func LoadTCFlushCount() uint64 { return atomic.LoadUint64(&TCFlushCount) }
 func LoadTCFlushMs() int64     { return atomic.LoadInt64(&TCFlushDurationMs) }
+
+// SetLastReconcileError сохраняет последнюю ошибку reconcile для вывода в CLI (status/logs).
+func SetLastReconcileError(s string) {
+	lastReconcileErrorMu.Lock()
+	lastReconcileError = s
+	lastReconcileErrorMu.Unlock()
+}
+
+// LoadLastReconcileError возвращает последнюю сохранённую ошибку reconcile.
+func LoadLastReconcileError() string {
+	lastReconcileErrorMu.Lock()
+	s := lastReconcileError
+	lastReconcileErrorMu.Unlock()
+	return s
+}
+
 func LoadAll() Snapshot {
 	return Snapshot{
-		ReconcileCycles:    atomic.LoadUint64(&ReconcileCyclesTotal),
-		ReconcileErrors:    atomic.LoadUint64(&ReconcileErrorsTotal),
-		ProbeTotal:         atomic.LoadUint64(&ProbeTotal),
-		ProbeFailed:        atomic.LoadUint64(&ProbeFailed),
-		AssignmentSwitches: atomic.LoadUint64(&AssignmentSwitches),
-		TunnelDegraded:     atomic.LoadUint64(&TunnelDegradedEvents),
-		RuleSyncAdds:       atomic.LoadUint64(&RuleSyncAdds),
-		RuleSyncDels:       atomic.LoadUint64(&RuleSyncDels),
-		TCFlushCount:       atomic.LoadUint64(&TCFlushCount),
-		TCFlushDurationMs:  atomic.LoadInt64(&TCFlushDurationMs),
+		ReconcileCycles:     atomic.LoadUint64(&ReconcileCyclesTotal),
+		ReconcileErrors:     atomic.LoadUint64(&ReconcileErrorsTotal),
+		ProbeTotal:          atomic.LoadUint64(&ProbeTotal),
+		ProbeFailed:         atomic.LoadUint64(&ProbeFailed),
+		AssignmentSwitches:  atomic.LoadUint64(&AssignmentSwitches),
+		TunnelDegraded:      atomic.LoadUint64(&TunnelDegradedEvents),
+		RuleSyncAdds:        atomic.LoadUint64(&RuleSyncAdds),
+		RuleSyncDels:        atomic.LoadUint64(&RuleSyncDels),
+		TCFlushCount:        atomic.LoadUint64(&TCFlushCount),
+		TCFlushDurationMs:   atomic.LoadInt64(&TCFlushDurationMs),
+		LastReconcileError:  LoadLastReconcileError(),
 	}
 }
 
 // Snapshot — копия всех счётчиков.
 type Snapshot struct {
-	ReconcileCycles    uint64 `json:"reconcile_cycles_total"`
-	ReconcileErrors    uint64 `json:"reconcile_errors_total"`
-	ProbeTotal         uint64 `json:"probe_total"`
-	ProbeFailed        uint64 `json:"probe_failed_total"`
-	AssignmentSwitches uint64 `json:"assignment_switches_total"`
-	TunnelDegraded     uint64 `json:"tunnel_degraded_events_total"`
-	RuleSyncAdds       uint64 `json:"rule_sync_adds"`
-	RuleSyncDels       uint64 `json:"rule_sync_dels"`
-	TCFlushCount       uint64 `json:"tc_flush_count"`
-	TCFlushDurationMs  int64  `json:"tc_flush_duration_ms"`
+	ReconcileCycles     uint64 `json:"reconcile_cycles_total"`
+	ReconcileErrors     uint64 `json:"reconcile_errors_total"`
+	ProbeTotal          uint64 `json:"probe_total"`
+	ProbeFailed         uint64 `json:"probe_failed_total"`
+	AssignmentSwitches  uint64 `json:"assignment_switches_total"`
+	TunnelDegraded      uint64 `json:"tunnel_degraded_events_total"`
+	RuleSyncAdds        uint64 `json:"rule_sync_adds"`
+	RuleSyncDels        uint64 `json:"rule_sync_dels"`
+	TCFlushCount        uint64 `json:"tc_flush_count"`
+	TCFlushDurationMs   int64  `json:"tc_flush_duration_ms"`
+	LastReconcileError  string `json:"last_reconcile_error,omitempty"`
 }

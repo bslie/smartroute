@@ -30,6 +30,9 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Printf("SmartRoute: демон запущен (generation=%d, reconcile_cycles=%d, reconcile_errors=%d)\n",
 		snap.Generation, snap.ReconcileCycles, snap.ReconcileErrors)
+	if snap.LastReconcileError != "" {
+		fmt.Println("Последняя ошибка reconcile:", snap.LastReconcileError)
+	}
 	fmt.Printf("Журнал работы (memlog) доступен только внутри процесса демона.\n")
 	return nil
 }

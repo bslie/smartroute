@@ -31,10 +31,11 @@ type StateSnapshot struct {
 	ProbeFailed        uint64 `json:"probe_failed_total"`
 	AssignmentSwitches uint64 `json:"assignment_switches_total"`
 	TunnelDegraded     uint64 `json:"tunnel_degraded_events_total"`
-	RuleSyncAdds       uint64 `json:"rule_sync_adds"`
-	RuleSyncDels       uint64 `json:"rule_sync_dels"`
-	TCFlushCount       uint64 `json:"tc_flush_count"`
-	TCFlushDurationMs  int64  `json:"tc_flush_duration_ms"`
+	RuleSyncAdds        uint64 `json:"rule_sync_adds"`
+	RuleSyncDels        uint64 `json:"rule_sync_dels"`
+	TCFlushCount        uint64 `json:"tc_flush_count"`
+	TCFlushDurationMs   int64  `json:"tc_flush_duration_ms"`
+	LastReconcileError  string `json:"last_reconcile_error,omitempty"`
 }
 
 // BuildStateSnapshot строит снимок из store. Вызывающий код должен держать st.Lock().
@@ -57,10 +58,11 @@ func BuildStateSnapshot(st *store.Store) StateSnapshot {
 		ProbeFailed:        m.ProbeFailed,
 		AssignmentSwitches: m.AssignmentSwitches,
 		TunnelDegraded:     m.TunnelDegraded,
-		RuleSyncAdds:       m.RuleSyncAdds,
-		RuleSyncDels:       m.RuleSyncDels,
-		TCFlushCount:       m.TCFlushCount,
-		TCFlushDurationMs:  m.TCFlushDurationMs,
+		RuleSyncAdds:        m.RuleSyncAdds,
+		RuleSyncDels:        m.RuleSyncDels,
+		TCFlushCount:        m.TCFlushCount,
+		TCFlushDurationMs:   m.TCFlushDurationMs,
+		LastReconcileError:  m.LastReconcileError,
 	}
 }
 

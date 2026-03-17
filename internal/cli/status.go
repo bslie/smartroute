@@ -44,6 +44,9 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	if len(snap.DisabledFeat) > 0 {
 		fmt.Println("  Disabled features:", snap.DisabledFeat)
 	}
+	if snap.LastReconcileError != "" {
+		fmt.Println("  Last reconcile err:", snap.LastReconcileError)
+	}
 	fmt.Println("  State at:         ", snap.At)
 	return nil
 }
