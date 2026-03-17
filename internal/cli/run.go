@@ -239,7 +239,10 @@ func runRun(cmd *cobra.Command, args []string) error {
 	rec.SetErrorLog(func(adapterName, phase string, err error) {
 		msg := adapterName + ": " + phase + ": " + err.Error()
 		ml.Write("error", msg)
-		metrics.SetLastReconcileError(msg)
+		// Сохраняем только реальные ошибки адаптеров; "skip" перезаписывал бы корневую причину (например WG).
+		if phase != "skip" {
+			metrics.SetLastReconcileError(msg)
+		}
 	})
 
 	var cfgMu sync.RWMutex
