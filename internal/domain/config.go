@@ -62,8 +62,9 @@ type WireGuardServerConfig struct {
 	ListenPort     int          `yaml:"listen_port,omitempty"`      // порт сервера, по умолчанию 51820
 	PrivateKeyFile string       `yaml:"private_key_file,omitempty"` // путь к приватному ключу сервера
 	PublicEndpoint string       `yaml:"public_endpoint,omitempty"`  // endpoint для клиентских конфигов (ip:port или domain:port)
-	NATInterface   string       `yaml:"nat_interface,omitempty"`    // интерфейс для MASQUERADE (если пусто, определяется автоматически)
-	PeersSubnet    string       `yaml:"peers_subnet,omitempty"`     // подсеть для автовыдачи IP при add, например 10.0.0.0/24
+	NATInterface   string       `yaml:"nat_interface,omitempty"`   // интерфейс для MASQUERADE (если пусто, определяется автоматически)
+	NatForTunnels  *bool        `yaml:"nat_for_tunnels,omitempty"` // NAT для трафика клиентов в туннели; по умолчанию true; при поломке WG задать false
+	PeersSubnet    string       `yaml:"peers_subnet,omitempty"`    // подсеть для автовыдачи IP при add, например 10.0.0.0/24
 	Peers          []PeerConfig `yaml:"peers,omitempty"`
 }
 

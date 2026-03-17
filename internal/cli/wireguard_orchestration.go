@@ -126,8 +126,9 @@ func ensureWGServer(cfg *domain.Config, cfgPath string) (string, string, bool, e
 		}
 	}
 
-	// NAT для трафика клиентов (PeersSubnet), уходящего в туннели SmartRoute — иначе ответы не вернутся.
-	if ws.PeersSubnet != "" && len(cfg.Tunnels) > 0 {
+	// NAT для трафика клиентов (PeersSubnet), уходящего в туннели SmartRoute. По умолчанию включено; при поломке WG задать nat_for_tunnels: false.
+	natForTunnels := ws.NatForTunnels == nil || *ws.NatForTunnels
+	if natForTunnels && ws.PeersSubnet != "" && len(cfg.Tunnels) > 0 {
 		for _, t := range cfg.Tunnels {
 			if t.Name == "" {
 				continue
