@@ -52,7 +52,22 @@ func HTTPProbeIface(host, domainName, iface string, port uint16, timeout time.Du
 		},
 	}
 
-	resp, err := client.Get(addr)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, addr, nil)
+	if err != nil {
+		return domain.ProbeResult{
+			DestIP:     net.ParseIP(host),
+			Type:       domain.ProbeHTTP,
+			LatencyMs:  int(time.Since(start).Milliseconds()),
+			ErrorClass: domain.ErrorUnknown,
+			Confidence: 0.3,
+			Timestamp:  time.Now(),
+		}
+	}
+	if domainName != "" {
+		// Явный Host нужен для виртуальных хостов при обращении по IP.
+		req.Host = domainName
+	}
+	resp, err := client.Do(req)
 	latencyMs := int(time.Since(start).Milliseconds())
 	if err != nil {
 		return domain.ProbeResult{

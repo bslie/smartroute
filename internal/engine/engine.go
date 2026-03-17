@@ -357,7 +357,9 @@ func (e *Engine) submitProbeJob(dest *domain.Destination, tunnel string, cfg *do
 		timeout = 2 * time.Second
 	}
 	probeType := domain.ProbeTCP
-	if cfg.Probe.HTTPCheck {
+	// HTTP-проба корректна только когда известен домен (SNI/Host).
+	// При пустом домене (часто при выключенном dns_log) используем TCP-пробу.
+	if cfg.Probe.HTTPCheck && dest.Domain != "" {
 		probeType = domain.ProbeHTTP
 	}
 	_ = e.probePool.Submit(probe.Job{
