@@ -122,25 +122,26 @@ func ensureRequiredPackages() error {
 	}
 	fmt.Fprintf(os.Stderr, "[*] Устанавливаю недостающие пакеты для полной работы: %v\n", toInstall)
 	script := `
+export DEBIAN_FRONTEND=noninteractive
 need_sudo=""
 [ "$(id -u)" -ne 0 ] && need_sudo="sudo"
 install_conntrack() {
   command -v conntrack >/dev/null 2>&1 && return 0
-  if command -v apt-get >/dev/null 2>&1; then $need_sudo apt-get update -qq; $need_sudo apt-get install -y -qq conntrack; fi
+  if command -v apt-get >/dev/null 2>&1; then $need_sudo env DEBIAN_FRONTEND=noninteractive apt-get update -qq; $need_sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq conntrack; fi
   if command -v dnf >/dev/null 2>&1; then $need_sudo dnf install -y -q conntrack-tools; fi
   if command -v yum >/dev/null 2>&1; then $need_sudo yum install -y -q conntrack-tools 2>/dev/null || true; fi
   if command -v apk >/dev/null 2>&1; then $need_sudo apk add --no-cache conntrack-tools; fi
 }
 install_nftables() {
   command -v nft >/dev/null 2>&1 && return 0
-  if command -v apt-get >/dev/null 2>&1; then $need_sudo apt-get install -y -qq nftables; fi
+  if command -v apt-get >/dev/null 2>&1; then $need_sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq nftables; fi
   if command -v dnf >/dev/null 2>&1; then $need_sudo dnf install -y -q nftables; fi
   if command -v yum >/dev/null 2>&1; then $need_sudo yum install -y -q nftables 2>/dev/null || true; fi
   if command -v apk >/dev/null 2>&1; then $need_sudo apk add --no-cache nftables; fi
 }
 install_tc() {
   command -v tc >/dev/null 2>&1 && return 0
-  if command -v apt-get >/dev/null 2>&1; then $need_sudo apt-get install -y -qq iproute2; fi
+  if command -v apt-get >/dev/null 2>&1; then $need_sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq iproute2; fi
   if command -v dnf >/dev/null 2>&1; then $need_sudo dnf install -y -q iproute; fi
   if command -v yum >/dev/null 2>&1; then $need_sudo yum install -y -q iproute 2>/dev/null || true; fi
   if command -v apk >/dev/null 2>&1; then $need_sudo apk add --no-cache iproute2; fi
@@ -148,6 +149,7 @@ install_tc() {
 install_conntrack; install_nftables; install_tc
 `
 	cmd := exec.Command("sh", "-c", script)
+	cmd.Stdin = nil
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -167,8 +169,8 @@ func ensureWireGuard() error {
 	if script == "" {
 		return fmt.Errorf("WireGuard не найден. Установите: apt install wireguard wireguard-tools (или dnf/apk). Переменная SMARTROUTE_INSTALL_WG_SCRIPT может указывать на скрипт установки")
 	}
-	// Запуск скрипта (он сам вызовет sudo при необходимости)
 	sh := exec.Command("sh", script)
+	sh.Stdin = nil
 	sh.Stdout = os.Stdout
 	sh.Stderr = os.Stderr
 	if err := sh.Run(); err != nil {

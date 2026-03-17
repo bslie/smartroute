@@ -20,6 +20,7 @@ elif command -v smartroute >/dev/null 2>&1; then
   INSTALLED_BIN="$(command -v smartroute)"
 fi
 IS_UPGRADE=""
+SMARTROUTE_WAS_RUNNING=0
 if [ -n "$INSTALLED_BIN" ]; then
   IS_UPGRADE=1
   echo "[SmartRoute] Обновление существующей установки"
@@ -211,6 +212,27 @@ build() {
     echo "[OK] Бинарник: $BUILD_DIR/smartroute"
 }
 
+# 5a. Остановка демона перед обновлением бинарника
+stop_daemon_if_running() {
+  PIDS=""
+  if command -v pgrep >/dev/null 2>&1; then
+    PIDS=$(pgrep -f 'smartroute run' 2>/dev/null || true)
+  fi
+  if [ -z "$PIDS" ]; then
+    return
+  fi
+  SMARTROUTE_WAS_RUNNING=1
+  echo "[*] Останавливаю демон SmartRoute (pid $PIDS)..."
+  for p in $PIDS; do
+    kill -TERM "$p" 2>/dev/null || true
+  done
+  sleep 2
+  for p in $PIDS; do
+    kill -0 "$p" 2>/dev/null && kill -9 "$p" 2>/dev/null || true
+  done
+  echo "[OK] Демон остановлен"
+}
+
 # 6. Установка (опционально)
 do_install() {
     if [ "$SKIP_INSTALL" = "1" ]; then
@@ -254,14 +276,21 @@ check_go
 prepare_src
 deps
 build
+stop_daemon_if_running
 do_install
 verify
 
-echo ""
-if [ -n "$IS_UPGRADE" ]; then
-    echo "Обновление завершено. Перезапустите демон SmartRoute для применения изменений (если запущен):"
-    echo "  kill \$(pgrep -f 'smartroute run')   # или: systemctl restart smartroute"
-    echo ""
+if [ "$SMARTROUTE_WAS_RUNNING" = "1" ]; then
+  echo "[*] Запускаю демон SmartRoute в фоне..."
+  nohup "$INSTALL_DIR/bin/smartroute" run -c /etc/smartroute/config.yaml >>/var/log/smartroute.log 2>&1 &
+  echo "[OK] Демон запущен (лог: /var/log/smartroute.log)"
 fi
-echo "Запуск: smartroute run -c /etc/smartroute/config.yaml"
-echo "Или: $INSTALL_DIR/bin/smartroute run -c /path/to/config.yaml"
+
+echo ""
+if [ -n "$IS_UPGRADE" ] && [ "$SMARTROUTE_WAS_RUNNING" != "1" ]; then
+  echo "Обновление завершено. Для запуска демона: smartroute run"
+  echo ""
+elif [ -z "$IS_UPGRADE" ]; then
+  echo "Запуск: smartroute run -c /etc/smartroute/config.yaml"
+  echo "Или: $INSTALL_DIR/bin/smartroute run -c /path/to/config.yaml"
+fi
