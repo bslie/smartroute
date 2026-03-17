@@ -449,14 +449,14 @@ func (e *Engine) writeProbeLogLine(r *domain.ProbeResult) {
 	if r.DestIP != nil {
 		dest = r.DestIP.String()
 	}
-	domain := r.Domain
-	if domain == "" {
-		domain = "-"
+	domainStr := r.Domain
+	if domainStr == "" {
+		domainStr = "-"
 	}
 	line := fmt.Sprintf("%s\t%s\t%s\t%s\t%s\t%d\t%s",
 		time.Now().Format(time.RFC3339Nano),
 		dest,
-		domain,
+		domainStr,
 		r.Tunnel,
 		string(r.Type),
 		r.LatencyMs,
