@@ -33,6 +33,6 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	if snap.LastReconcileError != "" {
 		fmt.Println("Последняя ошибка reconcile:", snap.LastReconcileError)
 	}
-	fmt.Printf("Журнал работы (memlog) доступен только внутри процесса демона.\n")
+	fmt.Printf("Полный memlog пишется только в процесс демона. Для логов демона используйте journalctl или вывод в файл.\n")
 	return nil
 }

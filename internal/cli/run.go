@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -122,6 +123,7 @@ func ensureRequiredPackages() error {
 		return nil
 	}
 	fmt.Fprintf(os.Stderr, "[*] Устанавливаю недостающие пакеты для полной работы: %v\n", toInstall)
+	fmt.Fprintf(os.Stderr, "[*] Установка может занять 1–2 минуты (триггеры dpkg). Ожидайте…\n")
 	script := `
 export DEBIAN_FRONTEND=noninteractive
 need_sudo=""
@@ -149,11 +151,31 @@ install_tc() {
 }
 install_conntrack; install_nftables; install_tc
 `
-	cmd := exec.Command("sh", "-c", script)
+	const installTimeout = 5 * time.Minute
+	ctx, cancel := context.WithTimeout(context.Background(), installTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "sh", "-c", script)
 	cmd.Stdin = nil
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	// Группа процессов: при таймауте убиваем и sh, и дочерние apt/dpkg, иначе apt остаётся висеть и блокирует lock.
+	if runtime.GOOS == "linux" {
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		cmd.Cancel = func() error {
+			if cmd.Process == nil {
+				return nil
+			}
+			pgid := cmd.Process.Pid
+			if pgid > 0 {
+				_ = syscall.Kill(-pgid, syscall.SIGKILL)
+			}
+			return nil
+		}
+	}
 	if err := cmd.Run(); err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return fmt.Errorf("установка пакетов превысила таймаут (%v). Установите вручную: apt install conntrack nftables iproute2, затем запустите smartroute run снова", installTimeout)
+		}
 		return fmt.Errorf("установка пакетов не удалась: %w", err)
 	}
 	engine.RefreshCapabilities()

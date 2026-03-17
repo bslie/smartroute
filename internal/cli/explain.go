@@ -49,15 +49,24 @@ func runExplainOrTunnel(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
 		return cmd.Help()
 	}
+	key := args[0]
+	// Если аргумент — имя туннеля из state-файла, показываем снимок туннеля.
+	if snap, err := engine.ReadStateFile(explainStateFile); err == nil {
+		for _, n := range snap.TunnelNames {
+			if n == key {
+				return runExplainTunnel(cmd, args)
+			}
+		}
+	}
 	return runExplain(cmd, args)
 }
 
 func runExplain(cmd *cobra.Command, args []string) error {
 	key := args[0]
-	ip := net.ParseIP(key)
 	st := store.New()
 	st.RLock()
 	defer st.RUnlock()
+	ip := net.ParseIP(key)
 	var d *domain.Destination
 	if ip != nil {
 		d = st.Destinations.Get(ip)
@@ -71,7 +80,7 @@ func runExplain(cmd *cobra.Command, args []string) error {
 		}
 	}
 	if d == nil {
-		fmt.Fprintf(os.Stderr, "destination not found: %s\n", key)
+		fmt.Fprintf(os.Stderr, "destination not found: %s (для туннеля: smartroute explain <tunnel_name>)\n", key)
 		os.Exit(1)
 	}
 	now := time.Now()

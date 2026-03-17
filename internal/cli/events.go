@@ -21,6 +21,6 @@ func runEvents(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	fmt.Printf("SmartRoute: демон запущен (generation=%d, ready=%v)\n", snap.Generation, snap.Ready)
-	fmt.Printf("События доступны в журнале демона. Используйте: smartroute logs\n")
+	fmt.Printf("События в реальном времени пишутся только в процесс демона. Краткий статус: smartroute status\n")
 	return nil
 }

@@ -3,10 +3,14 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 
+	"github.com/bslie/smartroute/internal/engine"
 	"github.com/bslie/smartroute/internal/store"
 	"github.com/spf13/cobra"
 )
+
+var dumpStateFile string
 
 var dumpCmd = &cobra.Command{
 	Use:   "dump",
@@ -14,7 +18,29 @@ var dumpCmd = &cobra.Command{
 	RunE:  runDump,
 }
 
+func init() {
+	dumpCmd.Flags().StringVar(&dumpStateFile, "state-file", "/var/run/smartroute/state.json", "файл состояния демона")
+}
+
 func runDump(cmd *cobra.Command, args []string) error {
+	snap, err := engine.ReadStateFile(dumpStateFile)
+	if err == nil {
+		m := map[string]interface{}{
+			"tunnels":            snap.TunnelNames,
+			"destinations":       snap.DestCount,
+			"ready":              snap.Ready,
+			"generation":         snap.Generation,
+			"applied":            snap.Applied,
+			"config_generation":  snap.ConfigGeneration,
+			"applied_config_gen": snap.AppliedConfigGen,
+			"active_profile":     snap.ActiveProfile,
+			"at":                 snap.At,
+		}
+		data, _ := json.MarshalIndent(m, "", "  ")
+		fmt.Println(string(data))
+		return nil
+	}
+	// Демон не запущен — выводим пустой state из локального store (для совместимости)
 	st := store.New()
 	st.RLock()
 	defer st.RUnlock()
@@ -26,5 +52,6 @@ func runDump(cmd *cobra.Command, args []string) error {
 	}
 	data, _ := json.MarshalIndent(m, "", "  ")
 	fmt.Println(string(data))
+	fmt.Fprintf(os.Stderr, "Демон не запущен (файл %s не найден). Запустите: smartroute run\n", dumpStateFile)
 	return nil
 }
