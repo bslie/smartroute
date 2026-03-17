@@ -67,6 +67,23 @@ func requireWireGuardServer(cfg *domain.Config) (*domain.WireGuardServerConfig, 
 	return cfg.WireGuardServer, nil
 }
 
+// ensureDefaultWireGuardServer добавляет секцию wireguard_server с дефолтами, если её нет. Возвращает true, если конфиг изменён.
+func ensureDefaultWireGuardServer(cfg *domain.Config, configPath string) bool {
+	if cfg.WireGuardServer != nil && cfg.WireGuardServer.Interface != "" {
+		return false
+	}
+	cfgDir := filepath.Dir(configPath)
+	cfg.WireGuardServer = &domain.WireGuardServerConfig{
+		Interface:      "wg0",
+		Address:        "10.100.0.1/24",
+		ListenPort:     51820,
+		PrivateKeyFile: filepath.Join(cfgDir, "keys", "wg0_server.key"),
+		PeersSubnet:    "10.100.0.0/24",
+		Peers:          nil,
+	}
+	return true
+}
+
 func runUserList(cmd *cobra.Command, args []string) error {
 	cfg, err := loadConfig(userConfigPath)
 	if err != nil {
@@ -172,6 +189,12 @@ func runUserAdd(cmd *cobra.Command, args []string) error {
 	cfg, err := loadConfig(userConfigPath)
 	if err != nil {
 		return err
+	}
+	if ensureDefaultWireGuardServer(cfg, userConfigPath) {
+		if err := saveConfig(userConfigPath, cfg); err != nil {
+			return fmt.Errorf("создать секцию wireguard_server в конфиге: %w", err)
+		}
+		fmt.Fprintf(os.Stderr, "[*] В конфиг добавлена секция wireguard_server (wg0, 10.100.0.0/24).\n")
 	}
 	ws, err := requireWireGuardServer(cfg)
 	if err != nil {
