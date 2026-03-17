@@ -44,7 +44,7 @@ probe:
   max_probes_per_tick: 50
   max_probes_per_destination_per_minute: 6
   signal_ttl: 120s
-  http_check: false
+  http_check: true   # детектировать 403/429 (geo-block) для переключения на другой туннель
   timeout: 5s
 
 game_mode:

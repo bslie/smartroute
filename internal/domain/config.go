@@ -109,6 +109,7 @@ func DefaultConfig() *Config {
 			MaxProbesPerDestinationPerMin: 6,
 			SignalTTL:                     120 * time.Second,
 			Timeout:                       5 * time.Second,
+			HTTPCheck:                     true, // иначе 403/geo-block не детектируются, переключение на другой туннель не срабатывает
 		},
 		DestTTL:                     120 * time.Second,
 		TunnelQuarantineCooldownSec: 60,
