@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -45,7 +46,44 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	if snap.LastReconcileError != "" {
 		fmt.Println("Последняя ошибка reconcile:", snap.LastReconcileError)
 	}
-	fmt.Printf("Полный memlog пишется только в процесс демона. Для логов проб: smartroute logs probes\n")
+	memlogPath := filepath.Join(filepath.Dir(runStateFile), "memlog.jsonl")
+	data, err := os.ReadFile(memlogPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Println("memlog.jsonl ещё нет (первый тик демона). Файл:", memlogPath)
+		} else {
+			fmt.Println("memlog:", err)
+		}
+		fmt.Println("Логи проб: smartroute logs probes")
+		return nil
+	}
+	lines := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
+	if len(lines) == 1 && lines[0] == "" {
+		fmt.Println("memlog пуст.")
+		return nil
+	}
+	n := logsN
+	if n <= 0 {
+		n = 100
+	}
+	if len(lines) < n {
+		n = len(lines)
+	}
+	start := len(lines) - n
+	fmt.Println("# time\tlevel\tmessage")
+	for i := start; i < len(lines); i++ {
+		var row struct {
+			Time    string `json:"time"`
+			Level   string `json:"level"`
+			Message string `json:"message"`
+		}
+		if json.Unmarshal([]byte(lines[i]), &row) == nil && row.Time != "" {
+			fmt.Printf("%s\t%s\t%s\n", row.Time, row.Level, row.Message)
+		} else {
+			fmt.Println(lines[i])
+		}
+	}
+	fmt.Println("Логи проб: smartroute logs probes")
 	return nil
 }
 

@@ -25,18 +25,10 @@ func init() {
 func runDump(cmd *cobra.Command, args []string) error {
 	snap, err := engine.ReadStateFile(dumpStateFile)
 	if err == nil {
-		m := map[string]interface{}{
-			"tunnels":            snap.TunnelNames,
-			"destinations":       snap.DestCount,
-			"ready":              snap.Ready,
-			"generation":         snap.Generation,
-			"applied":            snap.Applied,
-			"config_generation":  snap.ConfigGeneration,
-			"applied_config_gen": snap.AppliedConfigGen,
-			"active_profile":     snap.ActiveProfile,
-			"at":                 snap.At,
+		data, err := json.MarshalIndent(snap, "", "  ")
+		if err != nil {
+			return err
 		}
-		data, _ := json.MarshalIndent(m, "", "  ")
 		fmt.Println(string(data))
 		return nil
 	}

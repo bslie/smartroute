@@ -5,6 +5,12 @@ tick_interval_ms: 2000
 min_reconcile_interval: 500ms
 client_subnet: "10.0.0.0/24"   # immutable, не менять при reload
 
+# Снимок state: макс. число destinations в state.json (0 = по умолчанию 512).
+# state_snapshot_max_destinations: 512
+
+# Web UI (графики, таблица) на localhost — только на той же машине, что и демон.
+# web_ui_listen: "127.0.0.1:8899"
+
 tunnels:
   - name: ams
     endpoint: 1.2.3.4:51820

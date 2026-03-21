@@ -38,10 +38,15 @@ type StateSnapshot struct {
 	TCFlushCount        uint64 `json:"tc_flush_count"`
 	TCFlushDurationMs   int64  `json:"tc_flush_duration_ms"`
 	LastReconcileError  string `json:"last_reconcile_error,omitempty"`
+
+	// Destinations — подмножество destinations для CLI explain / Web UI (лимит см. DestinationsTruncated).
+	Destinations          []DestinationRecord `json:"destinations,omitempty"`
+	DestinationsTruncated bool                `json:"destinations_truncated,omitempty"`
 }
 
 // BuildStateSnapshot строит снимок из store. Вызывающий код должен держать st.Lock().
-func BuildStateSnapshot(st *store.Store) StateSnapshot {
+// maxDestinations — лимит записей в JSON (≤0: используется DefaultStateSnapshotMaxDestinations).
+func BuildStateSnapshot(st *store.Store, maxDestinations int) StateSnapshot {
 	m := metrics.LoadAll()
 	destByTunnel := make(map[string]int)
 	for _, a := range st.Assignments.All() {
@@ -49,6 +54,8 @@ func BuildStateSnapshot(st *store.Store) StateSnapshot {
 			destByTunnel[a.TunnelName]++
 		}
 	}
+	max := effectiveMaxDestinations(maxDestinations)
+	dests, truncated := appendDestinationRecords(st, max)
 	return StateSnapshot{
 		Generation:         st.Generation,
 		Applied:            st.AppliedGen,
@@ -73,6 +80,8 @@ func BuildStateSnapshot(st *store.Store) StateSnapshot {
 		TCFlushCount:        m.TCFlushCount,
 		TCFlushDurationMs:   m.TCFlushDurationMs,
 		LastReconcileError:  m.LastReconcileError,
+		Destinations:        dests,
+		DestinationsTruncated: truncated,
 	}
 }
 
@@ -98,7 +107,7 @@ func WriteStateFile(st *store.Store, path string) error {
 		return nil
 	}
 	st.RLock()
-	snap := BuildStateSnapshot(st)
+	snap := BuildStateSnapshot(st, 0)
 	st.RUnlock()
 	return WriteStateFileFromSnapshot(&snap, path)
 }

@@ -88,6 +88,10 @@ type Config struct {
 	HysteresisGamePct           int                    `yaml:"hysteresis_game_pct,omitempty"`
 	StickyBonus                 int                    `yaml:"sticky_bonus,omitempty"`
 	WireGuardServer             *WireGuardServerConfig `yaml:"wireguard_server,omitempty"`
+	// StateSnapshotMaxDestinations — макс. число destinations в state.json (0 = движок подставит дефолт 512).
+	StateSnapshotMaxDestinations int `yaml:"state_snapshot_max_destinations,omitempty"`
+	// WebUIListen — адрес HTTP Web UI (например 127.0.0.1:8899). Пусто — UI выключен.
+	WebUIListen string `yaml:"web_ui_listen,omitempty"`
 }
 
 // ConfigState — состояние конфига с generation.

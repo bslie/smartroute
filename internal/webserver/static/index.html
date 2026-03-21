@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SmartRoute</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 1rem; background: #0f1419; color: #e6edf3; }
+    h1 { font-size: 1.25rem; }
+    .meta { color: #8b949e; font-size: 0.9rem; margin-bottom: 1rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; }
+    .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 0.75rem; }
+    canvas { max-height: 220px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid #30363d; }
+    th { color: #8b949e; }
+    .err { color: #f85149; }
+  </style>
+</head>
+<body>
+  <h1>SmartRoute</h1>
+  <div class="meta" id="meta">Загрузка…</div>
+  <div class="grid">
+    <div class="card"><canvas id="chProbes"></canvas></div>
+    <div class="card"><canvas id="chDest"></canvas></div>
+  </div>
+  <div class="card" style="margin-top:1rem; overflow:auto;">
+    <strong>Destinations (из state)</strong>
+    <table id="tbl"><thead><tr><th>IP</th><th>Домен</th><th>Класс</th><th>Туннель</th><th>Состояние</th></tr></thead><tbody></tbody></table>
+  </div>
+  <p class="meta">API: <code>/api/v1/status</code> · обновление каждые 3 с</p>
+  <script>
+    const fmtTime = (t) => t ? new Date(t).toLocaleTimeString() : '';
+    let chartProbes, chartDest;
+    function mkChart(ctx, label, color) {
+      return new Chart(ctx, {
+        type: 'line',
+        data: { labels: [], datasets: [{ label, data: [], borderColor: color, tension: 0.2, fill: false }] },
+        options: {
+          responsive: true,
+          plugins: { legend: { labels: { color: '#8b949e' } } },
+          scales: {
+            x: { ticks: { color: '#8b949e', maxTicksLimit: 8 } },
+            y: { ticks: { color: '#8b949e' }, beginAtZero: true }
+          }
+        }
+      });
+    }
+    async function refresh() {
+      const r = await fetch('/api/v1/status');
+      if (!r.ok) { document.getElementById('meta').textContent = 'Ошибка API: ' + r.status; return; }
+      const j = await r.json();
+      const s = j.snapshot;
+      const h = j.history || [];
+      document.getElementById('meta').innerHTML =
+        s ? `Ready: <b>${s.ready}</b> · gen ${s.generation} · dest ${s.dest_count} · туннели: ${(s.tunnel_names||[]).join(', ')} · <span id="age"></span>`
+            : '<span class="err">Нет снимка (демон не делал тик)</span>';
+      if (s && s.at) {
+        const age = Math.round((Date.now() - new Date(s.at)) / 1000);
+        document.getElementById('age').textContent = 'снимок ' + age + ' с назад';
+      }
+      const labels = h.map(x => fmtTime(x.at));
+      if (!chartProbes) {
+        chartProbes = mkChart(document.getElementById('chProbes').getContext('2d'), 'probe_total', '#58a6ff');
+        chartDest = mkChart(document.getElementById('chDest').getContext('2d'), 'dest_count', '#3fb950');
+      }
+      chartProbes.data.labels = labels;
+      chartProbes.data.datasets[0].data = h.map(x => x.probe_total);
+      chartProbes.update('none');
+      chartDest.data.labels = labels;
+      chartDest.data.datasets[0].data = h.map(x => x.dest_count);
+      chartDest.update('none');
+      const tb = document.querySelector('#tbl tbody');
+      tb.innerHTML = '';
+      (s && s.destinations ? s.destinations : []).forEach(d => {
+        const tr = document.createElement('tr');
+        const tun = d.assignment ? d.assignment.tunnel : '—';
+        tr.innerHTML = '<td>' + (d.ip||'') + '</td><td>' + (d.domain||'') + '</td><td>' + (d.class||'') + '</td><td>' + tun + '</td><td>' + (d.state||'') + '</td>';
+        tb.appendChild(tr);
+      });
+    }
+    refresh();
+    setInterval(refresh, 3000);
+  </script>
+</body>
+</html>

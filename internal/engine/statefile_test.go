@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"net"
 	"path/filepath"
 	"testing"
 
@@ -18,6 +19,9 @@ func TestWriteReadStateFile(t *testing.T) {
 	st.Ready = true
 	st.ActiveProfile = "game"
 	st.Tunnels.Set(&domain.Tunnel{Name: "ams", Interface: "wg-ams"})
+	st.Destinations.Set(&domain.Destination{
+		IP: net.IPv4(8, 8, 8, 8), Domain: "dns.google", State: domain.DestStateAssigned,
+	})
 	st.Unlock()
 
 	if err := WriteStateFile(st, path); err != nil {
@@ -32,6 +36,9 @@ func TestWriteReadStateFile(t *testing.T) {
 	}
 	if len(snap.TunnelNames) != 1 || snap.TunnelNames[0] != "ams" {
 		t.Errorf("TunnelNames = %v", snap.TunnelNames)
+	}
+	if len(snap.Destinations) != 1 || snap.Destinations[0].IP != "8.8.8.8" {
+		t.Errorf("Destinations = %+v", snap.Destinations)
 	}
 }
 

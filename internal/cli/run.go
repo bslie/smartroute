@@ -20,6 +20,7 @@ import (
 	"github.com/bslie/smartroute/internal/eventbus"
 	"github.com/bslie/smartroute/internal/memlog"
 	"github.com/bslie/smartroute/internal/store"
+	"github.com/bslie/smartroute/internal/webserver"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -185,20 +186,8 @@ install_conntrack; install_nftables; install_tc
 	cmd.Stdin = nil
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	// Группа процессов: при таймауте убиваем и sh, и дочерние apt/dpkg, иначе apt остаётся висеть и блокирует lock.
-	if runtime.GOOS == "linux" {
-		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-		cmd.Cancel = func() error {
-			if cmd.Process == nil {
-				return nil
-			}
-			pgid := cmd.Process.Pid
-			if pgid > 0 {
-				_ = syscall.Kill(-pgid, syscall.SIGKILL)
-			}
-			return nil
-		}
-	}
+	// Группа процессов: при таймауте убиваем и sh, и дочерние apt/dpkg (только Linux — см. install_cmd_linux.go).
+	setInstallCmdSysProc(cmd)
 	if err := cmd.Run(); err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
 			return fmt.Errorf("установка пакетов превысила таймаут (%v). Установите вручную: apt install conntrack nftables iproute2, затем запустите smartroute run снова", installTimeout)
@@ -321,6 +310,9 @@ func runRun(cmd *cobra.Command, args []string) error {
 	defer cancel()
 	go rec.Run(ctx) // reconciler в отдельной горутине (async)
 	go eng.Run(ctx)
+	if cfg.WebUIListen != "" {
+		go webserver.Start(cfg.WebUIListen, eng)
+	}
 
 	// SIGHUP debounce: coalesce 500ms после последнего SIGHUP
 	var reloadMu sync.Mutex
