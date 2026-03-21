@@ -2,14 +2,11 @@ package cli
 
 import (
 	"fmt"
-	"net"
 	"os"
 	"time"
 
 	"github.com/bslie/smartroute/internal/decision"
-	"github.com/bslie/smartroute/internal/domain"
 	"github.com/bslie/smartroute/internal/engine"
-	"github.com/bslie/smartroute/internal/store"
 	"github.com/spf13/cobra"
 )
 
@@ -63,33 +60,26 @@ func runExplainOrTunnel(cmd *cobra.Command, args []string) error {
 
 func runExplain(cmd *cobra.Command, args []string) error {
 	key := args[0]
-	st := store.New()
-	st.RLock()
-	defer st.RUnlock()
-	ip := net.ParseIP(key)
-	var d *domain.Destination
-	if ip != nil {
-		d = st.Destinations.Get(ip)
+	stateSnap, err := engine.ReadStateFile(explainStateFile)
+	if err != nil {
+		return fmt.Errorf("state file: %w (запустите демон: smartroute run)", err)
 	}
-	if d == nil {
-		for _, dest := range st.Destinations.All() {
-			if dest.Domain == key {
-				d = dest
-				break
-			}
+	rec := engine.FindDestinationRecord(stateSnap, key)
+	if rec == nil {
+		msg := fmt.Sprintf("destination not found: %s (для туннеля: smartroute explain <tunnel_name>)", key)
+		if stateSnap.DestinationsTruncated {
+			msg += "\n  Примечание: список destinations в state усечён (destinations_truncated); цель может быть среди не попавших записей."
 		}
-	}
-	if d == nil {
-		fmt.Fprintf(os.Stderr, "destination not found: %s (для туннеля: smartroute explain <tunnel_name>)\n", key)
+		fmt.Fprintln(os.Stderr, msg)
 		os.Exit(1)
 	}
-	now := time.Now()
-	profile := ""
-	var snapshotAt time.Time
-	if stateSnap, err := engine.ReadStateFile(explainStateFile); err == nil {
-		profile = stateSnap.ActiveProfile
-		snapshotAt = stateSnap.At
+	d, err := engine.DomainDestinationFromRecord(rec)
+	if err != nil || d == nil {
+		return fmt.Errorf("разбор destination из state: %w", err)
 	}
+	now := time.Now()
+	profile := stateSnap.ActiveProfile
+	snapshotAt := stateSnap.At
 	snap := decision.BuildSnapshot(d, now, profile, snapshotAt)
 	if explainJSON {
 		out, _ := decision.FormatExplainJSON(snap)
