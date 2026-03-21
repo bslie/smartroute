@@ -54,6 +54,10 @@ type Engine struct {
 	probePool        *probe.Pool
 	probeCancel      context.CancelFunc
 	dnsCache         *observer.DNSCache
+
+	snapMu        sync.RWMutex
+	lastSnap      *StateSnapshot
+	MetricHistory *MetricHistory
 }
 
 // New создаёт engine.
@@ -83,6 +87,7 @@ func New(
 		degradedSince:    make(map[string]time.Time),
 		quarantineState:  make(map[string]*tunnelQuarantineState),
 		dnsCache:         observer.NewDNSCache(300 * time.Second),
+		MetricHistory:    NewMetricHistory(512),
 	}
 }
 
@@ -187,12 +192,18 @@ func (e *Engine) tick(ctx context.Context) {
 	e.runObserveDecideLoop(cfg)
 	e.Store.AppliedGen = e.Store.Generation
 	e.Store.AppliedConfigGen = e.Store.ConfigGeneration
-	snap := BuildStateSnapshot(e.Store)
+	maxSnap := cfg.StateSnapshotMaxDestinations
+	snap := BuildStateSnapshot(e.Store, maxSnap)
+	e.recordSnapshot(&snap)
 	// Снимаем Lock ДО вызова TriggerReconcile: reconcile выполняет exec.Command и может
 	// занять сотни мс — нельзя держать Store.Lock() всё это время (CLI не сможет читать).
 	e.Store.Unlock()
 	e.Reconciler.TriggerReconcile(cfg, e.Store)
 	WriteStateFileSafe(&snap, e.StateFile)
+	if e.StateFile != "" && e.MemLog != nil {
+		memlogPath := filepath.Join(filepath.Dir(e.StateFile), "memlog.jsonl")
+		_ = WriteMemlogJSONL(e.MemLog, memlogPath, 512)
+	}
 	// Убираем defer Store.Unlock() — мы уже разблокировали вручную.
 }
 
